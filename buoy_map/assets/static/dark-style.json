@@ -1,0 +1,28 @@
+{
+  "version": 8,
+  "name": "Custom Dark Style",
+  "sources": {
+    "osm": {
+      "type": "raster",
+      "tiles": [
+        "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "attribution": "© OpenStreetMap contributors"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#0d0d0d"
+      }
+    },
+    {
+      "id": "osm-tiles",
+      "type": "raster",
+      "source": "osm"
+    }
+  ]
+}
