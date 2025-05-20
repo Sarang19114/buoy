@@ -1,44 +1,52 @@
 defmodule BuoyMapWeb.MapLive do
   use BuoyMapWeb, :live_view
 
+  @impl true
   def mount(_params, _session, socket) do
-  mock_devices = [
-    %{name: "Dragino soil moisture ...", location: "Wayzata, MN", gps_fix: true, lat: 44.974, lng: -93.506},
-    %{name: "RAK - Device 21 - Paul ...", location: "Richmond, BC", gps_fix: true, lat: 49.166, lng: -123.133},
-    %{name: "Fremont 2", location: "Fremont, CA", gps_fix: true, lat: 37.548, lng: -121.988},
-    %{name: "disc01", location: "Unknown", gps_fix: false},
-    %{name: "Mapper 4", location: "Unknown", gps_fix: false},
-    %{name: "Mapper 2", location: "San Diego, CA", gps_fix: true, lat: 32.715, lng: -117.161,
-      hotspot: "Flat Vanilla Crab", sequence_no: "4117", avg_speed: "0mph",
-      elevation: "0m", voltage: "0.00v", rssi: "-101dBm", snr: "-11.00"},
-    %{name: "rocket_launch_RK72", location: "Los Angeles, CA", gps_fix: true, lat: 34.052, lng: -118.244}
-  ]
+    devices = mock_devices()
+    selected = Enum.at(devices, 0)
 
-  socket =
-    socket
-    |> assign(:devices, mock_devices)
-    |> assign(:selected_device, "Mapper 2")
-    |> push_event("map:update_devices", %{devices: mock_devices})
+    socket =
+      socket
+      |> assign(:devices, devices)
+      |> assign(:selected_device, selected)
 
-  {:ok, socket, layout: false}
-end
+    {:ok, socket, layout: false}
+  end
 
-
+  @impl true
   def handle_event("select_device", %{"name" => name}, socket) do
-  selected_device = Enum.find(socket.assigns.devices, fn d -> d.name == name end)
+    selected = Enum.find(socket.assigns.devices, fn d -> d.name == name end)
 
-  socket =
-    socket
-    |> assign(:selected_device, selected_device)
+    socket = assign(socket, :selected_device, selected)
 
-  
-  socket =
-    if selected_device[:lat] && selected_device[:lng] do
-      push_event(socket, "map:fly_to", %{lat: selected_device.lat, lng: selected_device.lng})
+    if selected.lat && selected.lng do
+      push_event(socket, "plot_marker", %{coordinates: [[selected.lat, selected.lng]]})
     else
       socket
     end
 
-  {:noreply, socket}
-end
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("map_loaded", _params, socket) do
+    if selected = socket.assigns.selected_device do
+      if selected.lat && selected.lng do
+        push_event(socket, "plot_marker", %{coordinates: [[selected.lat, selected.lng]]})
+      end
+    end
+
+    {:noreply, socket}
+  end
+
+  defp mock_devices do
+    [
+      %{name: "Mapper 1", location: "San Francisco", lat: 37.7749, lng: -122.4194},
+      %{name: "Mapper 2", location: "New York", lat: 40.7128, lng: -74.0060},
+      %{name: "Mapper 3", location: "London", lat: 51.5074, lng: -0.1278},
+      %{name: "Mapper 4", location: "Tokyo", lat: 35.6895, lng: 139.6917},
+      %{name: "Mapper 5", location: "Sydney", lat: -33.8688, lng: 151.2093}
+    ]
+  end
 end

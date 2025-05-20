@@ -22,9 +22,9 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
-import MapHook from "./hooks/map_hook";
-
-let Hooks = { MapHook };
+import MapLibreHook from "./hooks/map_hook";
+let Hooks = {};
+Hooks.MapHook = MapLibreHook;
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
