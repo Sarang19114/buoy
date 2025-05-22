@@ -4,7 +4,7 @@ defmodule BuoyMapWeb.MapLive do
   @update_interval 2000
   @new_device_interval 15000
   @max_mock_devices 20
-  @max_trail_points 50  
+  @max_trail_points 50  # Maximum number of trail points to keep per device
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -232,7 +232,7 @@ defmodule BuoyMapWeb.MapLive do
     end
   end
 
-  
+  # Initialize device trails from initial payloads
   defp initialize_device_trails(payloads) do
     payloads
     |> Enum.map(fn device ->
@@ -241,14 +241,14 @@ defmodule BuoyMapWeb.MapLive do
     |> Map.new()
   end
 
- 
+  # Update device trails with new positions
   defp update_device_trails(current_trails, updated_payloads) do
     updated_payloads
     |> Enum.reduce(current_trails, fn device, trails ->
       current_trail = Map.get(trails, device.device_id, [])
       new_point = [device.lon, device.lat]
       
-      
+      # Add new point and limit trail length
       updated_trail = 
         [new_point | current_trail]
         |> Enum.take(@max_trail_points)
@@ -526,7 +526,7 @@ defmodule BuoyMapWeb.MapLive do
           <% end %>
         </div>
         
-        
+        <!-- Trail info -->
         <div class="mt-4 pt-2 border-t border-gray-200">
           <div class="text-sm text-gray-600">
             <strong>Trail Points:</strong> <%= length(Map.get(@device_trails, @selected_device.device_id, [])) %>
@@ -536,7 +536,7 @@ defmodule BuoyMapWeb.MapLive do
     <% end %>
   </div>
 
-  
+  <!-- Mobile top navbar with higher z-index -->
   <div class="md:hidden fixed top-0 left-0 right-0 bg-white shadow p-2 flex flex-col space-y-2 z-40">
     <form phx-submit="filter_devices" class="flex justify-between items-center">
       <div class="flex-1 flex mr-2">
@@ -579,7 +579,7 @@ defmodule BuoyMapWeb.MapLive do
           <% end %>
         </div>
         
-        <
+        <!-- Trail info for mobile -->
         <div class="mt-2 pt-2 border-t border-gray-200">
           <div class="text-sm text-gray-600">
             <strong>Trail Points:</strong> <%= length(Map.get(@device_trails, @selected_device.device_id, [])) %>

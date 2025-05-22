@@ -4,14 +4,14 @@ const MapHook = {
   mounted() {
     console.log("MapHook mounted");
     
-    
+    // Store device markers in an object for easy reference by device_id
     this.deviceMarkers = {};
-    
+    // Store currently highlighted device ID
     this.highlightedDeviceId = null;
-    
+    // Store trail sources and layers
     this.trailLayers = {};
     
-    
+    // Create map with a reliable open source map style
     this.map = new maplibregl.Map({
       container: this.el.querySelector("#map"),
       style: {
@@ -103,11 +103,11 @@ const MapHook = {
       });
     });
     
-    
+    // Handle trail updates
     this.handleEvent("update_trail", (data) => {
       if (!data || !data.device_id || !data.trail) return;
       
-      
+      // Only update trail if this device is currently selected
       if (this.highlightedDeviceId === data.device_id) {
         this.updateTrail(data.device_id, data.trail);
       }
@@ -202,14 +202,14 @@ const MapHook = {
     return marker;
   },
   
-  
+  // Draw trail for a device
   drawTrail(deviceId, trail) {
     if (!trail || trail.length < 2) return;
     
     const sourceId = `trail-${deviceId}`;
     const layerId = `trail-layer-${deviceId}`;
     
-    
+    // Create GeoJSON for the trail
     const trailGeoJSON = {
       type: 'Feature',
       properties: {},
@@ -247,14 +247,14 @@ const MapHook = {
       });
     }
     
-    
+    // Store reference
     this.trailLayers[deviceId] = { sourceId, layerId };
     
     // Add trail point markers
     this.addTrailPointMarkers(deviceId, trail);
   },
   
-  
+  // Update existing trail
   updateTrail(deviceId, trail) {
     if (!trail || trail.length < 2) return;
     
@@ -278,15 +278,15 @@ const MapHook = {
     }
   },
   
-  
+  // Add small markers for trail points
   addTrailPointMarkers(deviceId, trail) {
-    
+    // Remove existing trail point markers
     this.removeTrailPointMarkers(deviceId);
     
     const trailMarkers = [];
     
     trail.forEach((point, index) => {
-      if (index === 0) return; 
+      if (index === 0) return; // Skip the current position (it's already marked by the main marker)
       
       const el = document.createElement('div');
       el.className = 'trail-point-marker';
@@ -295,7 +295,7 @@ const MapHook = {
       el.style.borderRadius = '50%';
       el.style.backgroundColor = '#ff6b6b';
       el.style.border = '1px solid white';
-      el.style.opacity = Math.max(0.3, 1 - (index * 0.02)); 
+      el.style.opacity = Math.max(0.3, 1 - (index * 0.02)); // Fade older points
       
       const marker = new maplibregl.Marker(el)
         .setLngLat(point)
