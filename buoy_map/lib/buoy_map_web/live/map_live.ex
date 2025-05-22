@@ -4,6 +4,7 @@ defmodule BuoyMapWeb.MapLive do
   @update_interval 2000
   @new_device_interval 15000
   @max_mock_devices 20
+  @max_trail_points 50  
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -25,7 +26,8 @@ defmodule BuoyMapWeb.MapLive do
         selected_device: nil,
         packets: generate_dummy_data(),
         transmitting_devices: %{},
-        next_device_id: length(initial_payloads) + 1
+        next_device_id: length(initial_payloads) + 1,
+        device_trails: initialize_device_trails(initial_payloads)
       )
 
     {:ok, socket, layout: false}
@@ -46,6 +48,7 @@ defmodule BuoyMapWeb.MapLive do
         |> push_event("highlight_device", %{
           device_id: nil  # Clear any highlighted device
         })
+        |> push_event("clear_trail", %{})
       else
         socket
       end
@@ -58,10 +61,14 @@ defmodule BuoyMapWeb.MapLive do
 
     socket =
       if device do
-        latest_location = [[device.lon, device.lat]]
-
+        # Get the trail for this device
+        trail = Map.get(socket.assigns.device_trails, device_id, [])
+        
         socket
-        |> push_event("plot_marker", %{history: latest_location})
+        |> push_event("plot_marker", %{
+          device: device,
+          trail: trail
+        })
         |> assign(:selected_device, device)
         |> push_event("highlight_device", %{
           device_id: device.device_id,
@@ -82,6 +89,7 @@ defmodule BuoyMapWeb.MapLive do
       |> push_event("highlight_device", %{
         device_id: nil  # Clear any highlighted device
       })
+      |> push_event("clear_trail", %{})
       |> push_event("fit_all_markers", %{})
 
     filtered = filter_payloads(socket.assigns.payloads, "")
@@ -120,20 +128,35 @@ defmodule BuoyMapWeb.MapLive do
         |> Map.put(:updated_at, DateTime.utc_now())
       end)
 
+    # Update device trails
+    updated_trails = update_device_trails(socket.assigns.device_trails, updated_payloads)
+
     socket =
       socket
       |> assign(:payloads, updated_payloads)
+      |> assign(:device_trails, updated_trails)
       |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
       |> push_event("update_device_locations", %{payloads: filter_payloads(updated_payloads, socket.assigns.filter_query)})
 
-    # Update selected device if one is selected
+    # Update selected device if one is selected and update its trail
     socket =
       if socket.assigns.selected_device do
         updated_device = Enum.find(updated_payloads, fn d ->
           d.device_id == socket.assigns.selected_device.device_id
         end)
 
-        assign(socket, :selected_device, updated_device)
+        if updated_device do
+          trail = Map.get(updated_trails, updated_device.device_id, [])
+          
+          socket
+          |> assign(:selected_device, updated_device)
+          |> push_event("update_trail", %{
+            device_id: updated_device.device_id,
+            trail: trail
+          })
+        else
+          socket
+        end
       else
         socket
       end
@@ -146,9 +169,14 @@ defmodule BuoyMapWeb.MapLive do
     if length(socket.assigns.payloads) < @max_mock_devices do
       new_device = create_random_mock_device(socket.assigns.next_device_id)
       updated_payloads = [new_device | socket.assigns.payloads]
+      
+      # Initialize trail for new device
+      updated_trails = Map.put(socket.assigns.device_trails, new_device.device_id, [[new_device.lon, new_device.lat]])
+      
       socket =
         socket
         |> assign(:payloads, updated_payloads)
+        |> assign(:device_trails, updated_trails)
         |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
         |> assign(:next_device_id, socket.assigns.next_device_id + 1)
       # Broadcast
@@ -186,9 +214,13 @@ defmodule BuoyMapWeb.MapLive do
         # Add the new device to this client's list of payloads
         updated_payloads = [payload_data | socket.assigns.payloads]
         
+        # Initialize trail for new device
+        updated_trails = Map.put(socket.assigns.device_trails, payload_data.device_id, [[payload_data.lon, payload_data.lat]])
+        
         socket = 
           socket
           |> assign(:payloads, updated_payloads)
+          |> assign(:device_trails, updated_trails)
           |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
           |> assign(:next_device_id, max(socket.assigns.next_device_id, String.to_integer(payload_data.device_id) + 1))
           |> push_event("new_payload", payload_data)
@@ -198,6 +230,31 @@ defmodule BuoyMapWeb.MapLive do
     else
       {:noreply, socket}
     end
+  end
+
+  
+  defp initialize_device_trails(payloads) do
+    payloads
+    |> Enum.map(fn device ->
+      {device.device_id, [[device.lon, device.lat]]}
+    end)
+    |> Map.new()
+  end
+
+ 
+  defp update_device_trails(current_trails, updated_payloads) do
+    updated_payloads
+    |> Enum.reduce(current_trails, fn device, trails ->
+      current_trail = Map.get(trails, device.device_id, [])
+      new_point = [device.lon, device.lat]
+      
+      
+      updated_trail = 
+        [new_point | current_trail]
+        |> Enum.take(@max_trail_points)
+      
+      Map.put(trails, device.device_id, updated_trail)
+    end)
   end
 
   # Initial set of mock devices
@@ -468,11 +525,18 @@ defmodule BuoyMapWeb.MapLive do
             </div>
           <% end %>
         </div>
+        
+        
+        <div class="mt-4 pt-2 border-t border-gray-200">
+          <div class="text-sm text-gray-600">
+            <strong>Trail Points:</strong> <%= length(Map.get(@device_trails, @selected_device.device_id, [])) %>
+          </div>
+        </div>
       </div>
     <% end %>
   </div>
 
-  <!-- Mobile top navbar with higher z-index -->
+  
   <div class="md:hidden fixed top-0 left-0 right-0 bg-white shadow p-2 flex flex-col space-y-2 z-40">
     <form phx-submit="filter_devices" class="flex justify-between items-center">
       <div class="flex-1 flex mr-2">
@@ -513,6 +577,13 @@ defmodule BuoyMapWeb.MapLive do
               Last update: <%= Calendar.strftime(@selected_device.updated_at, "%H:%M:%S") %>
             </div>
           <% end %>
+        </div>
+        
+        <
+        <div class="mt-2 pt-2 border-t border-gray-200">
+          <div class="text-sm text-gray-600">
+            <strong>Trail Points:</strong> <%= length(Map.get(@device_trails, @selected_device.device_id, [])) %>
+          </div>
         </div>
       </div>
     <% end %>

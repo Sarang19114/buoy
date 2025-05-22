@@ -4,12 +4,14 @@ const MapHook = {
   mounted() {
     console.log("MapHook mounted");
     
-    // Store device markers in an object for easy reference by device_id
+    
     this.deviceMarkers = {};
-    // Store currently highlighted device ID
+    
     this.highlightedDeviceId = null;
     
-    // Create map with a reliable open source map style
+    this.trailLayers = {};
+    
+    
     this.map = new maplibregl.Map({
       container: this.el.querySelector("#map"),
       style: {
@@ -57,7 +59,7 @@ const MapHook = {
     });
     
     // Handle device updates
-    this.handleEvent("update_device", (data) => {
+    this.handleEvent("update_device_locations", (data) => {
       console.log("Updating device locations", data);
       if (!data.payloads || data.payloads.length === 0) return;
       
@@ -75,22 +77,40 @@ const MapHook = {
       }
     });
     
-    // Handle device selection
+    // Handle device selection with trail
     this.handleEvent("plot_marker", (payload) => {
-      if (!payload || !payload.history || !payload.history.length) return;
-      const [lon, lat] = payload.history[0];
+      if (!payload || !payload.device || !payload.trail) return;
       
+      const device = payload.device;
+      const trail = payload.trail;
+      
+      // Clear existing trail
+      this.clearTrail();
+      
+      // Draw trail for selected device
+      this.drawTrail(device.device_id, trail);
+      
+      // Focus on the device
       const mapContainer = this.el.querySelector("#map");
       const { offsetWidth, offsetHeight } = mapContainer;
-    
-      const offset = [0.10 * -offsetWidth, -offsetHeight * 0.10] 
+      const offset = [0.10 * -offsetWidth, -offsetHeight * 0.10];
       
       this.map.flyTo({
-        center: [lon, lat],
+        center: [device.lon, device.lat],
         zoom: 12,
         speed: 1.5,
         offset: offset,
       });
+    });
+    
+    
+    this.handleEvent("update_trail", (data) => {
+      if (!data || !data.device_id || !data.trail) return;
+      
+      
+      if (this.highlightedDeviceId === data.device_id) {
+        this.updateTrail(data.device_id, data.trail);
+      }
     });
     
     // Handle device highlighting
@@ -106,6 +126,11 @@ const MapHook = {
       } else {
         this.highlightedDeviceId = null;
       }
+    });
+    
+    // Handle clearing trail
+    this.handleEvent("clear_trail", () => {
+      this.clearTrail();
     });
     
     // Handle fitting all markers on the map
@@ -177,6 +202,143 @@ const MapHook = {
     return marker;
   },
   
+  
+  drawTrail(deviceId, trail) {
+    if (!trail || trail.length < 2) return;
+    
+    const sourceId = `trail-${deviceId}`;
+    const layerId = `trail-layer-${deviceId}`;
+    
+    
+    const trailGeoJSON = {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates: trail
+      }
+    };
+    
+    // Add source
+    if (this.map.getSource(sourceId)) {
+      this.map.getSource(sourceId).setData(trailGeoJSON);
+    } else {
+      this.map.addSource(sourceId, {
+        type: 'geojson',
+        data: trailGeoJSON
+      });
+    }
+    
+    // Add layer if it doesn't exist
+    if (!this.map.getLayer(layerId)) {
+      this.map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#ff6b6b',
+          'line-width': 3,
+          'line-opacity': 0.8
+        }
+      });
+    }
+    
+    
+    this.trailLayers[deviceId] = { sourceId, layerId };
+    
+    // Add trail point markers
+    this.addTrailPointMarkers(deviceId, trail);
+  },
+  
+  
+  updateTrail(deviceId, trail) {
+    if (!trail || trail.length < 2) return;
+    
+    const sourceId = `trail-${deviceId}`;
+    
+    if (this.map.getSource(sourceId)) {
+      const trailGeoJSON = {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: trail
+        }
+      };
+      
+      this.map.getSource(sourceId).setData(trailGeoJSON);
+      this.updateTrailPointMarkers(deviceId, trail);
+    } else {
+      // If source doesn't exist, create the trail
+      this.drawTrail(deviceId, trail);
+    }
+  },
+  
+  
+  addTrailPointMarkers(deviceId, trail) {
+    
+    this.removeTrailPointMarkers(deviceId);
+    
+    const trailMarkers = [];
+    
+    trail.forEach((point, index) => {
+      if (index === 0) return; 
+      
+      const el = document.createElement('div');
+      el.className = 'trail-point-marker';
+      el.style.width = '8px';
+      el.style.height = '8px';
+      el.style.borderRadius = '50%';
+      el.style.backgroundColor = '#ff6b6b';
+      el.style.border = '1px solid white';
+      el.style.opacity = Math.max(0.3, 1 - (index * 0.02)); 
+      
+      const marker = new maplibregl.Marker(el)
+        .setLngLat(point)
+        .addTo(this.map);
+      
+      trailMarkers.push(marker);
+    });
+    
+    this.trailPointMarkers = this.trailPointMarkers || {};
+    this.trailPointMarkers[deviceId] = trailMarkers;
+  },
+  
+  // Update trail point markers
+  updateTrailPointMarkers(deviceId, trail) {
+    this.addTrailPointMarkers(deviceId, trail);
+  },
+  
+  // Remove trail point markers for a device
+  removeTrailPointMarkers(deviceId) {
+    if (this.trailPointMarkers && this.trailPointMarkers[deviceId]) {
+      this.trailPointMarkers[deviceId].forEach(marker => marker.remove());
+      delete this.trailPointMarkers[deviceId];
+    }
+  },
+  
+  // Clear all trails
+  clearTrail() {
+    Object.keys(this.trailLayers).forEach(deviceId => {
+      const { sourceId, layerId } = this.trailLayers[deviceId];
+      
+      if (this.map.getLayer(layerId)) {
+        this.map.removeLayer(layerId);
+      }
+      if (this.map.getSource(sourceId)) {
+        this.map.removeSource(sourceId);
+      }
+      
+      this.removeTrailPointMarkers(deviceId);
+    });
+    
+    this.trailLayers = {};
+  },
+  
   // Update all device positions with random movements
   updateDevicePositionsWithJitter() {
     Object.values(this.deviceMarkers).forEach(marker => {
@@ -228,25 +390,30 @@ const MapHook = {
       ? devices.map(device => this.deviceMarkers[device.device_id])
       : Object.values(this.deviceMarkers);
 
-  if (allMarkers.length === 0) return;
+    if (allMarkers.length === 0) return;
 
-  const bounds = new maplibregl.LngLatBounds();
-  allMarkers.forEach(marker => bounds.extend(marker.getLngLat()));
+    const bounds = new maplibregl.LngLatBounds();
+    allMarkers.forEach(marker => bounds.extend(marker.getLngLat()));
 
-  this.map.fitBounds(bounds, {
-    padding: 50,
-    maxZoom: 12
-  });
-},
+    this.map.fitBounds(bounds, {
+      padding: 50,
+      maxZoom: 12
+    });
+  },
   
   destroyed() {
     if (this.movementInterval) {
       clearInterval(this.movementInterval);
     }
+    
+    // Clean up trails
+    this.clearTrail();
+    
     if (this.map) {
       this.map.remove();
     }
     this.deviceMarkers = {};
+    this.trailPointMarkers = {};
   }
 };
 
@@ -265,11 +432,15 @@ document.head.insertAdjacentHTML('beforeend', `
     }
     
   .highlighted-marker {
-    width: 25px;
-    height: 30px;
+    width: 25px !important;
+    height: 25px !important;
     z-index: 100;
     animation: pulse 1s infinite;
     border-radius: 50%;
+  }
+  
+  .trail-point-marker {
+    transition: opacity 0.3s ease;
   }
   
   .maplibregl-popup-content {
