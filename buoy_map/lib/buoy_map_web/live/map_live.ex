@@ -32,27 +32,27 @@ defmodule BuoyMapWeb.MapLive do
     {:ok, socket, layout: false}
   end
 
-  # def handle_event("filter_devices", %{"query" => query}, socket) do
-  #   filtered = filter_payloads(socket.assigns.payloads, query)
-  #   socket =
-  #     socket
-  #     |> assign(filter_query: query, filtered_payloads: filtered)
-  #     |> push_event("update_filtered_devices", %{
-  #       payloads: filtered,
-  #       query: query
-  #     })
+  def handle_event("filter_devices", %{"query" => query}, socket) do
+    filtered = filter_payloads(socket.assigns.payloads, query)
+    socket =
+      socket
+      |> assign(filter_query: query, filtered_payloads: filtered)
 
-  #   # If the currently selected device is not in the filtered list, deselect it
-  #   socket =
-  #     if socket.assigns.selected_device &&
-  #          not Enum.any?(filtered, fn d -> d.device_id == socket.assigns.selected_device.device_id end) do
-  #       assign(socket, :selected_device, nil)
-  #     else
-  #       socket
-  #     end
+    # If the currently selected device is not in the filtered list, deselect it
+    socket =
+      if socket.assigns.selected_device &&
+           not Enum.any?(filtered, fn d -> d.device_id == socket.assigns.selected_device.device_id end) do
+        socket
+        |> assign(:selected_device, nil)
+        |> push_event("highlight_device", %{
+          device_id: nil  # Clear any highlighted device
+        })
+      else
+        socket
+      end
 
-  #   {:noreply, socket}
-  # end
+    {:noreply, socket}
+  end
 
   def handle_event("device_clicked", %{"id" => device_id}, socket) do
     device = Enum.find(socket.assigns.payloads, fn d -> d.device_id == device_id end)
@@ -383,7 +383,7 @@ defmodule BuoyMapWeb.MapLive do
   <!-- Sidebar for desktop -->
   <div class="hidden md:flex md:flex-col md:w-1/4 bg-gray-100 rounded-lg shadow-lg p-4 overflow-y-auto">
     <div class="flex justify-between items-center mb-4">
-      <h2 class="text-2xl font-bold text-gray-800">Devices</h2>
+      <h2 class="text-2xl font-bold text-gray-800">Buoy Map</h2>
       <button
         phx-click="show_all"
         class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors duration-150"
@@ -392,15 +392,19 @@ defmodule BuoyMapWeb.MapLive do
       </button>
     </div>
 
-    <input
-      type="text"
-      placeholder="Filter devices..."
-      value={@filter_query}
-      phx-debounce="300"
-      phx-change="filter_devices"
-      name="query"
-      class="w-full p-2 mb-4 rounded border border-gray-300"
-    />
+    <form phx-submit="filter_devices" class="w-full mb-4">
+      <div class="flex">
+        <input
+          type="text"
+          placeholder="Filter devices..."
+          value={@filter_query}
+          phx-change="filter_devices"
+          phx-debounce="300"
+          name="query"
+          class="w-full p-2 rounded-l border border-gray-300"
+        />
+      </div>
+    </form>
 
     <ul class="space-y-3">
       <%= for payload <- @filtered_payloads do %>
@@ -453,23 +457,26 @@ defmodule BuoyMapWeb.MapLive do
 
   <!-- Mobile top navbar with higher z-index -->
   <div class="md:hidden fixed top-0 left-0 right-0 bg-white shadow p-2 flex flex-col space-y-2 z-40">
-    <div class="flex justify-between items-center">
-      <input
-        type="text"
-        placeholder="Filter devices..."
-        value={@filter_query}
-        phx-debounce="300"
-        phx-change="filter_devices"
-        name="query"
-        class="flex-1 p-2 rounded border border-gray-300 mr-2"
-      />
+    <form phx-submit="filter_devices" class="flex justify-between items-center">
+      <div class="flex-1 flex mr-2">
+        <input
+          type="text"
+          placeholder="Filter devices..."
+          value={@filter_query}
+          phx-change="filter_devices"
+          phx-debounce="300"
+          name="query"
+          class="flex-1 p-2 rounded-l border border-gray-300"
+        />
+
+      </div>
       <button
         phx-click="show_all"
         class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-150 flex-shrink-0"
       >
         See All
       </button>
-    </div>
+    </form>
 
     <!-- Status box for mobile with guaranteed z-index -->
     <%= if @selected_device do %>

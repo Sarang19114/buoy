@@ -37,7 +37,6 @@ const MapHook = {
           }
         ]
       },
-      center: [-122.41919, 37.77115],
       zoom: 2,
       minZoom: 2,
       maxZoom: 19
@@ -65,32 +64,6 @@ const MapHook = {
       data.payloads.forEach(device => {
         this.updateMarkerPosition(device);
       });
-    });
-    
-    // Handle filtered devices updates
-    this.handleEvent("update_filtered_devices", (data) => {
-      console.log("Updating filtered devices", data);
-      if (!data.payloads) return;
-      Object.values(this.deviceMarkers).forEach(marker => {
-        marker.getElement().style.display = 'none';
-      });
-      data.payloads.forEach(device => {
-        const marker = this.deviceMarkers[device.device_id];
-        if (marker) {
-          marker.getElement().style.display = 'block';
-          if (data.highlight_only && data.payloads.length === 1) {
-            marker.getElement().classList.add('highlighted-marker');
-          } else {
-            marker.getElement().classList.remove('highlighted-marker');
-          }
-        }
-      });
-      // Fit the map to the visible markers
-      if (data.show_all) {
-        this.fitMapToMarkers(Object.values(this.deviceMarkers));
-      } else if (data.payloads.length > 0) {
-        this.fitMapToMarkers(data.payloads);
-      }
     });
     
     // Handle new device creation
@@ -151,20 +124,9 @@ const MapHook = {
     });
   },
   
-
-  getDeviceColor(deviceId) {
-  if (!deviceId) return 'hsl(0, 0%, 70%)';
-  let hash = 0;
-  for (let i = 0; i < deviceId.length; i++) {
-    hash = deviceId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 70%, 60%)`;
-},
-  
   // Add a single device marker
   addDeviceMarker(device) {
-    const deviceColor = this.getDeviceColor(device.device_id);
+    const deviceColor = '#3b82f6';
     
     const el = document.createElement('div');
     el.className = 'device-marker';
