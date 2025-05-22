@@ -79,10 +79,17 @@ const MapHook = {
     this.handleEvent("plot_marker", (payload) => {
       if (!payload || !payload.history || !payload.history.length) return;
       const [lon, lat] = payload.history[0];
+      
+      const mapContainer = this.el.querySelector("#map");
+      const { offsetWidth, offsetHeight } = mapContainer;
+    
+      const offset = [0.10 * -offsetWidth, -offsetHeight * 0.10] 
+      
       this.map.flyTo({
         center: [lon, lat],
         zoom: 12,
-        speed: 1.5
+        speed: 1.5,
+        offset: offset,
       });
     });
     
@@ -112,7 +119,7 @@ const MapHook = {
     
     this.movementInterval = setInterval(() => {
       this.updateDevicePositionsWithJitter();
-    }, 2000); // Update every 2
+    }, 2000); // Update every 2 seconds
   },
   
   // Initialize all device markers
@@ -136,7 +143,6 @@ const MapHook = {
     el.style.backgroundColor = deviceColor;
     el.style.border = '2px solid white';
     el.style.cursor = 'pointer';
-    el.style.boxShadow = `0 0 0 rgba(${deviceColor}, 0.6)`;
     el.style.animation = 'pulse 1.5s infinite';
     
     const popup = new maplibregl.Popup({ offset: 25, closeButton: false })
@@ -171,7 +177,7 @@ const MapHook = {
     return marker;
   },
   
-  // Update all device positions with small random movements
+  // Update all device positions with random movements
   updateDevicePositionsWithJitter() {
     Object.values(this.deviceMarkers).forEach(marker => {
       if (marker._basePosition) {
@@ -197,7 +203,7 @@ const MapHook = {
       lat: device.lat
     };
     
-    // Update marker position immediately - no animation
+    // Update marker position
     marker.setLngLat([device.lon, device.lat]);
     if (marker._popup) {
       marker._popup.setHTML(`
@@ -218,32 +224,20 @@ const MapHook = {
   
   // Fit map to show all visible markers
   fitMapToMarkers(devices = null) {
-    let visibleMarkers = [];
-    if (devices) {
-      if (devices.length > 0 && devices[0] instanceof maplibregl.Marker) {
-        visibleMarkers = devices.filter(marker => 
-          marker && marker.getElement().style.display !== 'none'
-        );
-      } else {
-        visibleMarkers = devices
-          .map(device => this.deviceMarkers[device.device_id])
-          .filter(marker => marker && marker.getElement().style.display !== 'none');
-      }
-    } else {
-      visibleMarkers = Object.values(this.deviceMarkers)
-        .filter(marker => marker.getElement().style.display !== 'none');
-    }
-    
-    if (visibleMarkers.length === 0) return;
-    const bounds = new maplibregl.LngLatBounds();
-    visibleMarkers.forEach(marker => {
-      bounds.extend(marker.getLngLat());
-    });
-    this.map.fitBounds(bounds, {
-      padding: 50,
-      maxZoom: 12
-    });
-  },
+    const allMarkers = devices
+      ? devices.map(device => this.deviceMarkers[device.device_id])
+      : Object.values(this.deviceMarkers);
+
+  if (allMarkers.length === 0) return;
+
+  const bounds = new maplibregl.LngLatBounds();
+  allMarkers.forEach(marker => bounds.extend(marker.getLngLat()));
+
+  this.map.fitBounds(bounds, {
+    padding: 50,
+    maxZoom: 12
+  });
+},
   
   destroyed() {
     if (this.movementInterval) {
@@ -271,22 +265,21 @@ document.head.insertAdjacentHTML('beforeend', `
     }
     
   .highlighted-marker {
-    width: 25px !important;
-    height: 30px !important;
-    z-index: 100 !important;
-    animation: pulse 1s infinite !important;
-    border-radius: 50% !important;
+    width: 25px;
+    height: 30px;
+    z-index: 100;
+    animation: pulse 1s infinite;
+    border-radius: 50%;
   }
   
   .maplibregl-popup-content {
-    border-radius: 8px !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-    padding: 0 !important;
-    overflow: hidden !important;
+    border-radius: 8px;
+    padding: 0;
+    overflow: hidden;
   }
   
   .maplibregl-popup {
-    z-index: 200 !important;
+    z-index: 200;
   }
   </style>
 `);

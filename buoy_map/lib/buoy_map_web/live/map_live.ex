@@ -24,7 +24,6 @@ defmodule BuoyMapWeb.MapLive do
         filter_query: "",
         selected_device: nil,
         packets: generate_dummy_data(),
-        show_mappers: false,
         transmitting_devices: %{},
         next_device_id: length(initial_payloads) + 1
       )
@@ -106,7 +105,6 @@ defmodule BuoyMapWeb.MapLive do
     updated_payloads =
       socket.assigns.payloads
       |> Enum.map(fn device ->
-        # Use a more significant movement distance for better visibility
         {new_lon, new_lat} = significant_movement(device.lon, device.lat)
 
         # Update device metrics
@@ -122,7 +120,6 @@ defmodule BuoyMapWeb.MapLive do
         |> Map.put(:updated_at, DateTime.utc_now())
       end)
 
-    # Update socket assigns
     socket =
       socket
       |> assign(:payloads, updated_payloads)
@@ -177,7 +174,27 @@ defmodule BuoyMapWeb.MapLive do
       end
 
     if payload_data != %{} do
-      {:noreply, push_event(socket, "new_payload", payload_data)}
+      # Check if this device is already in our payloads list (to avoid duplicates)
+      device_exists = Enum.any?(socket.assigns.payloads, fn device -> 
+        device.device_id == payload_data.device_id 
+      end)
+
+      if device_exists do
+        # Device already exists in our list, just update the UI
+        {:noreply, push_event(socket, "new_payload", payload_data)}
+      else
+        # Add the new device to this client's list of payloads
+        updated_payloads = [payload_data | socket.assigns.payloads]
+        
+        socket = 
+          socket
+          |> assign(:payloads, updated_payloads)
+          |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
+          |> assign(:next_device_id, max(socket.assigns.next_device_id, String.to_integer(payload_data.device_id) + 1))
+          |> push_event("new_payload", payload_data)
+          
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
