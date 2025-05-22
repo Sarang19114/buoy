@@ -377,17 +377,6 @@ defmodule BuoyMapWeb.MapLive do
     %{data: Enum.reverse(data)}
   end
 
-  defp dummy_last_packet do
-    %{
-      sequence_number: 5462,
-      avg_speed: 5.4,
-      elevation: 42.0,
-      battery: 4.8,
-      rssi: -85,
-      snr: 7.3
-    }
-  end
-
   def render(assigns) do
 ~H"""
 <div class="flex flex-col md:flex-row w-screen h-screen">
@@ -416,12 +405,12 @@ defmodule BuoyMapWeb.MapLive do
     <ul class="space-y-3">
       <%= for payload <- @filtered_payloads do %>
         <li
-          class={"bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer transition duration-150 ease-in-out hover:bg-blue-50 hover:shadow-md active:bg-gray-100 active:shadow-inner " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-100", else: ""}
+          class={"bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer transition duration-150 ease-in-out hover:bg-blue-50 hover:shadow-md active:bg-gray-100 active:shadow-inner " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-200 border-2 border-blue-500", else: ""}
           phx-click="device_clicked"
           phx-value-id={payload.device_id}
         >
           <div class="flex items-center space-x-3">
-            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+            <div class={"w-3 h-3 rounded-full " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-600", else: "bg-green-500"}></div>
             <span class="font-medium text-gray-800"><%= payload.name %></span>
           </div>
           <div class="text-xs text-gray-500">
@@ -509,13 +498,13 @@ defmodule BuoyMapWeb.MapLive do
   <div class="md:hidden fixed bottom-0 left-0 right-0 bg-gray-100 p-2 flex space-x-3 overflow-x-auto shadow-inner z-40">
     <%= for payload <- @filtered_payloads do %>
       <button
-        class={"bg-white rounded-lg shadow px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-700 hover:bg-blue-50 active:bg-gray-100 " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-100", else: ""}
+        class={"bg-white rounded-lg shadow px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-700 hover:bg-blue-50 active:bg-gray-100 " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-200 border-2 border-blue-500", else: ""}
         phx-click="device_clicked"
         phx-value-id={payload.device_id}
         aria-label={"Select device #{payload.name}"}
       >
         <div class="flex items-center gap-1">
-          <div class="w-2 h-2 rounded-full bg-green-500"></div>
+          <div class={"w-2 h-2 rounded-full " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-600", else: "bg-green-500"}></div>
           <%= payload.name %>
         </div>
       </button>
