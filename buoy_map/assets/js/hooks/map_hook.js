@@ -219,13 +219,12 @@ const MapHook = {
           marker._basePosition.lat + (Math.random() * 2 - 1) * jitterAmount
         ];
         
-        // Update marker position immediately - no animation
         marker.setLngLat(newPos);
       }
     });
   },
   
-  // Simply update marker position - no animation or trails
+  // Simply update marker position
   updateMarkerPosition(device) {
     const marker = this.deviceMarkers[device.device_id];
     if (!marker) return;
