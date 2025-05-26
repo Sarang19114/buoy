@@ -9,6 +9,7 @@ defmodule BuoyMapWeb.MapLive do
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BuoyMap.PubSub, "payload_created")
+      Phoenix.PubSub.subscribe(BuoyMap.PubSub, "device_movements")
       # timer to update existing device data
       :timer.send_interval(@update_interval, :update_device_data)
       # timer to create new mock devices
@@ -27,7 +28,8 @@ defmodule BuoyMapWeb.MapLive do
         packets: generate_dummy_data(),
         transmitting_devices: %{},
         next_device_id: length(initial_payloads) + 1,
-        device_trails: initialize_device_trails(initial_payloads)
+        device_trails: initialize_device_trails(initial_payloads),
+        expanded_devices: %{}  # Track which device coordinates are expanded
       )
 
     {:ok, socket, layout: false}
@@ -63,7 +65,7 @@ defmodule BuoyMapWeb.MapLive do
       if device do
         # Get the trail for this device
         trail = Map.get(socket.assigns.device_trails, device_id, [])
-        
+
         socket
         |> push_event("plot_marker", %{
           device: device,
@@ -108,6 +110,16 @@ defmodule BuoyMapWeb.MapLive do
     {:noreply, push_event(socket, "init_device", %{payloads: socket.assigns.filtered_payloads})}
   end
 
+  def handle_event("toggle_coordinates", %{"id" => device_id}, socket) do
+    # Get the current expanded state
+    expanded_devices = socket.assigns[:expanded_devices] || %{}
+
+    # Toggle the expanded state for this device
+    updated_expanded = Map.update(expanded_devices, device_id, true, &(!&1))
+
+    {:noreply, assign(socket, :expanded_devices, updated_expanded)}
+  end
+
   # Handler for updating existing device data
   def handle_info(:update_device_data, socket) do
     updated_payloads =
@@ -147,7 +159,7 @@ defmodule BuoyMapWeb.MapLive do
 
         if updated_device do
           trail = Map.get(updated_trails, updated_device.device_id, [])
-          
+
           socket
           |> assign(:selected_device, updated_device)
           |> push_event("update_trail", %{
@@ -169,10 +181,10 @@ defmodule BuoyMapWeb.MapLive do
     if length(socket.assigns.payloads) < @max_mock_devices do
       new_device = create_random_mock_device(socket.assigns.next_device_id)
       updated_payloads = [new_device | socket.assigns.payloads]
-      
+
       # Initialize trail for new device
       updated_trails = Map.put(socket.assigns.device_trails, new_device.device_id, [[new_device.lon, new_device.lat]])
-      
+
       socket =
         socket
         |> assign(:payloads, updated_payloads)
@@ -203,8 +215,8 @@ defmodule BuoyMapWeb.MapLive do
 
     if payload_data != %{} do
       # Check if this device is already in our payloads list (to avoid duplicates)
-      device_exists = Enum.any?(socket.assigns.payloads, fn device -> 
-        device.device_id == payload_data.device_id 
+      device_exists = Enum.any?(socket.assigns.payloads, fn device ->
+        device.device_id == payload_data.device_id
       end)
 
       if device_exists do
@@ -213,23 +225,103 @@ defmodule BuoyMapWeb.MapLive do
       else
         # Add the new device to this client's list of payloads
         updated_payloads = [payload_data | socket.assigns.payloads]
-        
+
         # Initialize trail for new device
         updated_trails = Map.put(socket.assigns.device_trails, payload_data.device_id, [[payload_data.lon, payload_data.lat]])
-        
-        socket = 
+
+        socket =
           socket
           |> assign(:payloads, updated_payloads)
           |> assign(:device_trails, updated_trails)
           |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
           |> assign(:next_device_id, max(socket.assigns.next_device_id, String.to_integer(payload_data.device_id) + 1))
           |> push_event("new_payload", payload_data)
-          
+
         {:noreply, socket}
       end
     else
       {:noreply, socket}
     end
+  end
+
+  # Handle device selection sync
+  def handle_info(%{topic: "payload_created", event: "device_selected", selected_device_id: device_id}, socket) do
+    # Don't handle our own broadcasts - only apply if this client didn't select the device itself
+    if socket.assigns.selected_device && socket.assigns.selected_device.device_id == device_id do
+      {:noreply, socket}
+    else
+      device = Enum.find(socket.assigns.payloads, fn d -> d.device_id == device_id end)
+
+      if device do
+        trail = Map.get(socket.assigns.device_trails, device_id, [])
+
+        socket =
+          socket
+          |> assign(:selected_device, device)
+          |> push_event("plot_marker", %{
+            device: device,
+            trail: trail
+          })
+          |> push_event("highlight_device", %{
+            device_id: device.device_id,
+          })
+
+        {:noreply, socket}
+      else
+        {:noreply, socket}
+      end
+    end
+  end
+
+  # Handle device movement broadcasts from device detail page
+  def handle_info(%{topic: "device_movements", device_id: device_id} = payload, socket) do
+    # Find the device in our list
+    device = Enum.find(socket.assigns.payloads, fn d -> d.device_id == device_id end)
+
+    if device do
+      # Update coordinates
+      updated_device = Map.put(device, :lon, payload.device.lon)
+      updated_device = Map.put(updated_device, :lat, payload.device.lat)
+
+      updated_payloads = Enum.map(socket.assigns.payloads, fn d ->
+        if d.device_id == device_id, do: updated_device, else: d
+      end)
+
+      # Update trail for this device
+      current_trail = Map.get(socket.assigns.device_trails, device_id, [])
+      new_point = [updated_device.lon, updated_device.lat]
+      updated_trail = [new_point | current_trail] |> Enum.take(@max_trail_points)
+      updated_trails = Map.put(socket.assigns.device_trails, device_id, updated_trail)
+
+      # Update UI
+      socket =
+        socket
+        |> assign(:payloads, updated_payloads)
+        |> assign(:device_trails, updated_trails)
+        |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
+
+      # Update marker position
+      socket = push_event(socket, "update_device_locations", %{payloads: [updated_device]})
+
+      # If this is the selected device, update the trail in the UI
+      socket = if socket.assigns.selected_device && socket.assigns.selected_device.device_id == device_id do
+        socket
+        |> assign(:selected_device, updated_device)
+        |> push_event("update_trail", %{device_id: device_id, trail: updated_trail})
+      else
+        socket
+      end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # More robust general PubSub handler - catch all unmatched messages
+  def handle_info(%{topic: _} = _message, socket) do
+    # Safely ignore any other PubSub messages
+    {:noreply, socket}
   end
 
   # Initialize device trails from initial payloads
@@ -247,12 +339,12 @@ defmodule BuoyMapWeb.MapLive do
     |> Enum.reduce(current_trails, fn device, trails ->
       current_trail = Map.get(trails, device.device_id, [])
       new_point = [device.lon, device.lat]
-      
+
       # Add new point and limit trail length
-      updated_trail = 
+      updated_trail =
         [new_point | current_trail]
         |> Enum.take(@max_trail_points)
-      
+
       Map.put(trails, device.device_id, updated_trail)
     end)
   end
@@ -482,20 +574,62 @@ defmodule BuoyMapWeb.MapLive do
 
     <ul class="space-y-3">
       <%= for payload <- @filtered_payloads do %>
-        <li
-          class={"bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer transition duration-150 ease-in-out hover:bg-blue-50 hover:shadow-md active:bg-gray-100 active:shadow-inner " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-200 border-2 border-blue-500", else: ""}
-          phx-click="device_clicked"
-          phx-value-id={payload.device_id}
-        >
-          <div class="flex items-center space-x-3">
-            <div class={"w-3 h-3 rounded-full " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-600", else: "bg-green-500"}></div>
-            <span class="font-medium text-gray-800"><%= payload.name %></span>
+        <li class={"bg-white rounded-lg shadow p-4 flex flex-col cursor-pointer transition duration-150 ease-in-out " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-200 border-2 border-blue-500", else: ""}>
+          <div
+            class="flex items-center justify-between hover:bg-blue-50"
+            phx-click="device_clicked"
+            phx-value-id={payload.device_id}
+          >
+            <div class="flex items-center space-x-3">
+              <div class={"w-3 h-3 rounded-full " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-600", else: "bg-green-500"}></div>
+              <span class="font-medium text-gray-800"><%= payload.name %></span>
+            </div>
+            <div class="flex items-center">
+              <div class="text-xs text-gray-500 mr-2">
+                <%= if Map.has_key?(payload, :updated_at) do %>
+                  <%= Calendar.strftime(payload.updated_at, "%H:%M:%S") %>
+                <% end %>
+              </div>
+              <button
+                phx-click="toggle_coordinates"
+                phx-value-id={payload.device_id}
+                class="text-gray-500 hover:text-blue-600 focus:outline-none"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <%= if Map.get(@expanded_devices || %{}, payload.device_id) do %>
+                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                  <% else %>
+                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                  <% end %>
+                </svg>
+              </button>
+            </div>
           </div>
-          <div class="text-xs text-gray-500">
-            <%= if Map.has_key?(payload, :updated_at) do %>
-              Updated: <%= Calendar.strftime(payload.updated_at, "%H:%M:%S") %>
-            <% end %>
-          </div>
+
+          <%= if Map.get(@expanded_devices || %{}, payload.device_id) do %>
+            <div class="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-600 max-h-48 overflow-y-auto">
+              <div class="mb-2">
+                <a
+                  href={~p"/device/#{payload.device_id}"}
+                  class="block w-full text-center py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-medium transition-colors duration-150"
+                >
+                  Show Detailed View
+                </a>
+              </div>
+
+              <div class="font-medium mb-1 mt-3">Coordinate History:</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="font-medium">Longitude</div>
+                <div class="font-medium">Latitude</div>
+              </div>
+              <%= for [lon, lat] <- Map.get(@device_trails, payload.device_id, []) do %>
+                <div class="grid grid-cols-2 gap-2 hover:bg-gray-100 py-1">
+                  <div><%= Float.round(lon, 6) %></div>
+                  <div><%= Float.round(lat, 6) %></div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
         </li>
       <% end %>
     </ul>
@@ -525,7 +659,7 @@ defmodule BuoyMapWeb.MapLive do
             </div>
           <% end %>
         </div>
-        
+
         <!-- Trail info -->
         <div class="mt-4 pt-2 border-t border-gray-200">
           <div class="text-sm text-gray-600">
@@ -578,7 +712,7 @@ defmodule BuoyMapWeb.MapLive do
             </div>
           <% end %>
         </div>
-        
+
         <!-- Trail info for mobile -->
         <div class="mt-2 pt-2 border-t border-gray-200">
           <div class="text-sm text-gray-600">
@@ -592,19 +726,80 @@ defmodule BuoyMapWeb.MapLive do
   <!-- Mobile bottom bar with higher z-index -->
   <div class="md:hidden fixed bottom-0 left-0 right-0 bg-gray-100 p-2 flex space-x-3 overflow-x-auto shadow-inner z-40">
     <%= for payload <- @filtered_payloads do %>
-      <button
-        class={"bg-white rounded-lg shadow px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-700 hover:bg-blue-50 active:bg-gray-100 " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-200 border-2 border-blue-500", else: ""}
-        phx-click="device_clicked"
-        phx-value-id={payload.device_id}
-        aria-label={"Select device #{payload.name}"}
-      >
-        <div class="flex items-center gap-1">
-          <div class={"w-2 h-2 rounded-full " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-600", else: "bg-green-500"}></div>
-          <%= payload.name %>
-        </div>
-      </button>
+      <div class="flex flex-col">
+        <button
+          class={"bg-white rounded-lg shadow px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-700 hover:bg-blue-50 active:bg-gray-100 " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-200 border-2 border-blue-500", else: ""}
+          phx-click="device_clicked"
+          phx-value-id={payload.device_id}
+          aria-label={"Select device #{payload.name}"}
+        >
+          <div class="flex items-center gap-1">
+            <div class={"w-2 h-2 rounded-full " <> if @selected_device && @selected_device.device_id == payload.device_id, do: "bg-blue-600", else: "bg-green-500"}></div>
+            <%= payload.name %>
+          </div>
+        </button>
+        <%= if @selected_device && @selected_device.device_id == payload.device_id do %>
+          <button
+            phx-click="toggle_coordinates"
+            phx-value-id={payload.device_id}
+            class="mt-1 text-xs flex items-center justify-center gap-1 text-blue-600 bg-white rounded-lg px-2 py-1 shadow"
+          >
+            <span>History</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+              <%= if Map.get(@expanded_devices || %{}, payload.device_id) do %>
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              <% else %>
+                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              <% end %>
+            </svg>
+          </button>
+        <% end %>
+      </div>
     <% end %>
   </div>
+
+  <!-- Coordinates history modal for mobile -->
+  <%= if @selected_device && Map.get(@expanded_devices || %{}, @selected_device.device_id) do %>
+    <div class="md:hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+      <div class="bg-white rounded-lg p-4 mx-4 w-full max-w-xs max-h-[70vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="text-lg font-bold">Coordinate History</h3>
+          <button
+            phx-click="toggle_coordinates"
+            phx-value-id={@selected_device.device_id}
+            class="text-gray-500 hover:text-gray-700"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+          </button>
+        </div>
+        <div class="text-sm text-gray-800">
+          <div class="font-medium"><%= @selected_device.name %></div>
+
+          <div class="mt-4 mb-4">
+            <a
+              href={~p"/device/#{@selected_device.device_id}"}
+              class="block w-full text-center py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm font-medium transition-colors duration-150"
+            >
+              Show Detailed View
+            </a>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 mt-3 text-sm">
+            <div class="font-medium">Longitude</div>
+            <div class="font-medium">Latitude</div>
+          </div>
+          <%= for [lon, lat] <- Map.get(@device_trails, @selected_device.device_id, []) do %>
+            <div class="grid grid-cols-2 gap-2 hover:bg-gray-100 py-1 border-t border-gray-100">
+              <div><%= Float.round(lon, 6) %></div>
+              <div><%= Float.round(lat, 6) %></div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% end %>
 
   <!-- Global styles for proper z-index stacking -->
   <style>

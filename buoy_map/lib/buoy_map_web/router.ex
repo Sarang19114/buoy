@@ -18,6 +18,7 @@ defmodule BuoyMapWeb.Router do
     pipe_through :browser
 
     live "/", MapLive
+    live "/device/:id", DeviceDetailLive
   end
 
   # Other scopes may use custom stacks.

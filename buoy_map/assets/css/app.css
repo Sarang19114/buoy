@@ -2,7 +2,10 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+/* Import MapLibre GL CSS */
 @import "maplibre-gl/dist/maplibre-gl.css";
+
+/* This file is for your main application CSS */
 
 .marker {
   cursor: pointer;

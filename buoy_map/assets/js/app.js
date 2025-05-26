@@ -22,15 +22,19 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
-import MapLibreHook from "./hooks/map_hook";
-let Hooks = {};
-Hooks.MapHook = MapLibreHook;
+// Include your hook imports here
+import MapHook from "./hooks/map_hook";
+import DeviceMapHook from "./hooks/device_map_hook";
+
+let Hooks = {
+  MapHook,
+  DeviceMapHook
+};
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
-  hooks: Hooks,
-  longPollFallbackMs: 2500,
-  params: {_csrf_token: csrfToken}
+  params: {_csrf_token: csrfToken},
+  hooks: Hooks
 })
 
 // Show progress bar on live navigation and form submits

@@ -188,6 +188,7 @@ const MapHook = {
     const marker = new maplibregl.Marker(el)
       .setLngLat([device.lon, device.lat])
       .addTo(this.map);
+      
     marker._popup = popup;
     el.addEventListener('mouseenter', () => popup.addTo(this.map));
     el.addEventListener('mouseleave', () => popup.remove());
@@ -208,6 +209,7 @@ const MapHook = {
     
     const sourceId = `trail-${deviceId}`;
     const layerId = `trail-layer-${deviceId}`;
+    const glowLayerId = `trail-glow-${deviceId}`;
     
     // Create GeoJSON for the trail
     const trailGeoJSON = {
@@ -231,6 +233,24 @@ const MapHook = {
     
     // Add layer if it doesn't exist
     if (!this.map.getLayer(layerId)) {
+      // Add trail glow layer first (for a halo effect)
+      this.map.addLayer({
+        id: glowLayerId,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#ff9999',
+          'line-width': 8,
+          'line-opacity': 0.4,
+          'line-blur': 3
+        }
+      });
+      
+      // Add main trail layer
       this.map.addLayer({
         id: layerId,
         type: 'line',
@@ -241,14 +261,14 @@ const MapHook = {
         },
         paint: {
           'line-color': '#ff6b6b',
-          'line-width': 3,
-          'line-opacity': 0.8
+          'line-width': 4,
+          'line-opacity': 0.9
         }
       });
     }
     
     // Store reference
-    this.trailLayers[deviceId] = { sourceId, layerId };
+    this.trailLayers[deviceId] = { sourceId, layerId, glowLayerId };
     
     // Add trail point markers
     this.addTrailPointMarkers(deviceId, trail);
@@ -290,16 +310,24 @@ const MapHook = {
       
       const el = document.createElement('div');
       el.className = 'trail-point-marker';
-      el.style.width = '8px';
-      el.style.height = '8px';
+      el.style.width = '5px';
+      el.style.height = '5px';
       el.style.borderRadius = '50%';
       el.style.backgroundColor = '#ff6b6b';
       el.style.border = '1px solid white';
-      el.style.opacity = Math.max(0.3, 1 - (index * 0.02)); // Fade older points
+      el.style.opacity = Math.max(0.3, 1 - (index * 0.05)); // Fade older points faster
       
-      const marker = new maplibregl.Marker(el)
-        .setLngLat(point)
-        .addTo(this.map);
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor: 'center',
+        offset: [0, 0],
+        // Don't allow dragging and disable interactivity
+        draggable: false,
+        clickTolerance: 0,
+        rotation: 0
+      })
+      .setLngLat(point)
+      .addTo(this.map);
       
       trailMarkers.push(marker);
     });
@@ -324,11 +352,16 @@ const MapHook = {
   // Clear all trails
   clearTrail() {
     Object.keys(this.trailLayers).forEach(deviceId => {
-      const { sourceId, layerId } = this.trailLayers[deviceId];
+      const { sourceId, layerId, glowLayerId } = this.trailLayers[deviceId];
       
       if (this.map.getLayer(layerId)) {
         this.map.removeLayer(layerId);
       }
+      
+      if (this.map.getLayer(glowLayerId)) {
+        this.map.removeLayer(glowLayerId);
+      }
+      
       if (this.map.getSource(sourceId)) {
         this.map.removeSource(sourceId);
       }
@@ -431,7 +464,7 @@ document.head.insertAdjacentHTML('beforeend', `
       }
     }
     
-  .highlighted-marker {
+    .highlighted-marker {
     width: 25px !important;
     height: 25px !important;
     z-index: 100;
@@ -441,6 +474,7 @@ document.head.insertAdjacentHTML('beforeend', `
   
   .trail-point-marker {
     transition: opacity 0.3s ease;
+    pointer-events: none;
   }
   
   .maplibregl-popup-content {
