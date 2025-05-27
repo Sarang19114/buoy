@@ -13,6 +13,7 @@ defmodule BuoyMap.Application do
       {Phoenix.PubSub, name: BuoyMap.PubSub},
       # Start the Finch HTTP client for sending emails
       {Finch, name: BuoyMap.Finch},
+      {BuoyMap.DeviceStore, []},
       # Start a worker by calling: BuoyMap.Worker.start_link(arg)
       # {BuoyMap.Worker, arg},
       # Start to serve requests, typically the last entry

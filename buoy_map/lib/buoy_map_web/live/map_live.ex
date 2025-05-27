@@ -1,5 +1,8 @@
 defmodule BuoyMapWeb.MapLive do
   use BuoyMapWeb, :live_view
+  require Logger
+
+  alias BuoyMap.DeviceStore
 
   @update_interval 2000
   @new_device_interval 15000
@@ -10,14 +13,13 @@ defmodule BuoyMapWeb.MapLive do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BuoyMap.PubSub, "payload_created")
       Phoenix.PubSub.subscribe(BuoyMap.PubSub, "device_movements")
-      # timer to update existing device data
       :timer.send_interval(@update_interval, :update_device_data)
-      # timer to create new mock devices
       :timer.send_interval(@new_device_interval, :create_new_device)
     end
 
     # Initial mock devices
     initial_payloads = initial_mock_devices()
+    DeviceStore.set_devices(initial_payloads)
 
     socket =
       assign(socket,
@@ -29,7 +31,7 @@ defmodule BuoyMapWeb.MapLive do
         transmitting_devices: %{},
         next_device_id: length(initial_payloads) + 1,
         device_trails: initialize_device_trails(initial_payloads),
-        expanded_devices: %{}  # Track which device coordinates are expanded
+        expanded_devices: %{}
       )
 
     {:ok, socket, layout: false}
@@ -120,14 +122,12 @@ defmodule BuoyMapWeb.MapLive do
     {:noreply, assign(socket, :expanded_devices, updated_expanded)}
   end
 
-  # Handler for updating existing device data
   def handle_info(:update_device_data, socket) do
     updated_payloads =
       socket.assigns.payloads
       |> Enum.map(fn device ->
         {new_lon, new_lat} = significant_movement(device.lon, device.lat)
-
-        # Update device metrics
+        updated_device =
         device
         |> Map.put(:lon, new_lon)
         |> Map.put(:lat, new_lat)
@@ -138,10 +138,14 @@ defmodule BuoyMapWeb.MapLive do
         |> Map.put(:rssi, -100 + :rand.uniform() * 30)
         |> Map.put(:snr, :rand.uniform() * 12)
         |> Map.put(:updated_at, DateTime.utc_now())
+        DeviceStore.update_device(updated_device)
+        updated_device
       end)
 
-    # Update device trails
     updated_trails = update_device_trails(socket.assigns.device_trails, updated_payloads)
+    Enum.each(updated_payloads, fn device ->
+      DeviceStore.update_trail(device.device_id, Map.get(updated_trails, device.device_id, []))
+    end)
 
     socket =
       socket
@@ -150,16 +154,13 @@ defmodule BuoyMapWeb.MapLive do
       |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
       |> push_event("update_device_locations", %{payloads: filter_payloads(updated_payloads, socket.assigns.filter_query)})
 
-    # Update selected device if one is selected and update its trail
     socket =
       if socket.assigns.selected_device do
         updated_device = Enum.find(updated_payloads, fn d ->
           d.device_id == socket.assigns.selected_device.device_id
         end)
-
         if updated_device do
           trail = Map.get(updated_trails, updated_device.device_id, [])
-
           socket
           |> assign(:selected_device, updated_device)
           |> push_event("update_trail", %{
@@ -176,28 +177,24 @@ defmodule BuoyMapWeb.MapLive do
     {:noreply, socket}
   end
 
-  # Handler for creating new mock devices
   def handle_info(:create_new_device, socket) do
     if length(socket.assigns.payloads) < @max_mock_devices do
       new_device = create_random_mock_device(socket.assigns.next_device_id)
       updated_payloads = [new_device | socket.assigns.payloads]
-
-      # Initialize trail for new device
       updated_trails = Map.put(socket.assigns.device_trails, new_device.device_id, [[new_device.lon, new_device.lat]])
-
+      DeviceStore.update_device(new_device)
+      DeviceStore.update_trail(new_device.device_id, [[new_device.lon, new_device.lat]])
       socket =
         socket
         |> assign(:payloads, updated_payloads)
         |> assign(:device_trails, updated_trails)
         |> assign(:filtered_payloads, filter_payloads(updated_payloads, socket.assigns.filter_query))
         |> assign(:next_device_id, socket.assigns.next_device_id + 1)
-      # Broadcast
       Phoenix.PubSub.broadcast(
         BuoyMap.PubSub,
         "payload_created",
         %{topic: "payload_created", payload: %{data: new_device}}
       )
-      # Also push directly to this client
       {:noreply, push_event(socket, "new_payload", new_device)}
     else
       {:noreply, socket}
@@ -292,6 +289,10 @@ defmodule BuoyMapWeb.MapLive do
       new_point = [updated_device.lon, updated_device.lat]
       updated_trail = [new_point | current_trail] |> Enum.take(@max_trail_points)
       updated_trails = Map.put(socket.assigns.device_trails, device_id, updated_trail)
+
+      # Update DeviceStore
+      DeviceStore.update_device(updated_device)
+      DeviceStore.update_trail(device_id, updated_trail)
 
       # Update UI
       socket =

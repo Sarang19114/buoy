@@ -1,4 +1,5 @@
 import maplibregl from "maplibre-gl";
+import Chart from 'chart.js/auto';
 
 const DeviceMapHook = {
   mounted() {
@@ -7,6 +8,9 @@ const DeviceMapHook = {
     try {
       // Initialize map
       this.initMap();
+      
+      // Initialize charts
+      this.initCharts();
       
       // Event listeners for device data
       this.handleEvent("init_device_detail", (data) => {
@@ -127,19 +131,11 @@ const DeviceMapHook = {
   initCharts() {
     console.log("Initializing charts...");
     try {
-      let chartCount = 0;
-      const expectedCharts = 5; // RSSI, SNR, Speed, Voltage, Elevation
-      
-      const checkAllChartsLoaded = () => {
-        chartCount++;
-        if (chartCount >= expectedCharts) {
-          this.pushEvent("charts_loaded_success", {});
-        }
-      };
-      
       // Initialize empty charts
       this.initializeEmptyCharts();
-      checkAllChartsLoaded();
+      
+      // Send success event immediately after initialization
+      this.pushEvent("charts_loaded_success", {});
       
     } catch (error) {
       console.error("Error initializing charts:", error);
@@ -157,6 +153,7 @@ const DeviceMapHook = {
       { id: 'elevation-chart', label: 'Elevation (m)', color: 'rgb(54, 162, 235)' }
     ];
 
+    let initialized = 0;
     chartConfigs.forEach(config => {
       const element = document.getElementById(config.id);
       if (element) {
@@ -180,13 +177,23 @@ const DeviceMapHook = {
               y: {
                 beginAtZero: config.id === 'speed-chart'
               }
+            },
+            plugins: {
+              legend: {
+                display: false
+              }
             }
           }
         });
+        initialized++;
       } else {
         console.warn(`${config.id} element not found`);
       }
     });
+
+    // Log initialization status
+    console.log(`Initialized ${initialized} out of ${chartConfigs.length} charts`);
+    return initialized === chartConfigs.length;
   },
   
   // Initialize device marker and trail
@@ -590,9 +597,21 @@ const DeviceMapHook = {
     try {
       if (!chart) return;
       
+      // Update data and labels
       chart.data.labels = labels;
       chart.data.datasets[0].data = data;
-      chart.update();
+
+      // Adjust x-axis display based on number of points
+      const pointCount = labels.length;
+      chart.options.scales.x = {
+        ticks: {
+          maxTicksLimit: Math.min(20, Math.max(10, Math.floor(pointCount / 10))), // Dynamic tick count
+          autoSkip: true,
+          maxRotation: 0
+        }
+      };
+      
+      chart.update('none'); // Use 'none' mode for better performance
     } catch (error) {
       console.error("Error updating chart:", error);
     }
