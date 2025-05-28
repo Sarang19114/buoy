@@ -1,5 +1,4 @@
 import maplibregl from "maplibre-gl";
-import Chart from 'chart.js/auto';
 
 const DeviceMapHook = {
   mounted() {
@@ -8,9 +7,6 @@ const DeviceMapHook = {
     try {
       // Initialize map
       this.initMap();
-      
-      // Initialize charts
-      this.initCharts();
       
       // Event listeners for device data
       this.handleEvent("init_device_detail", (data) => {
@@ -23,12 +19,6 @@ const DeviceMapHook = {
       this.handleEvent("update_device_detail", (data) => {
         if (data && data.device) {
           this.updateDevice(data.device, data.trail);
-        }
-      });
-      
-      this.handleEvent("update_charts", (data) => {
-        if (data && data.metrics) {
-          this.updateCharts(data.metrics);
         }
       });
       
@@ -52,9 +42,6 @@ const DeviceMapHook = {
         console.log("Received external device update", data);
         if (data && data.device && data.device.device_id === this.el.dataset.deviceId) {
           this.updateDevice(data.device, data.trail);
-          if (data.metrics) {
-            this.updateCharts(data.metrics);
-          }
         }
       });
     } catch (error) {
@@ -125,75 +112,6 @@ const DeviceMapHook = {
       console.error("Error initializing map:", error);
       this.pushEvent("hook_error", { error: `Map initialization error: ${error.toString()}` });
     }
-  },
-  
-  // Initialize charts
-  initCharts() {
-    console.log("Initializing charts...");
-    try {
-      // Initialize empty charts
-      this.initializeEmptyCharts();
-      
-      // Send success event immediately after initialization
-      this.pushEvent("charts_loaded_success", {});
-      
-    } catch (error) {
-      console.error("Error initializing charts:", error);
-      this.pushEvent("hook_error", { error: `Charts initialization error: ${error.toString()}` });
-    }
-  },
-
-  // Initialize empty charts
-  initializeEmptyCharts() {
-    const chartConfigs = [
-      { id: 'rssi-chart', label: 'RSSI (dBm)', color: 'rgb(75, 192, 192)' },
-      { id: 'snr-chart', label: 'SNR (dB)', color: 'rgb(153, 102, 255)' },
-      { id: 'speed-chart', label: 'Speed (m/s)', color: 'rgb(255, 99, 132)' },
-      { id: 'voltage-chart', label: 'Voltage (V)', color: 'rgb(255, 159, 64)' },
-      { id: 'elevation-chart', label: 'Elevation (m)', color: 'rgb(54, 162, 235)' }
-    ];
-
-    let initialized = 0;
-    chartConfigs.forEach(config => {
-      const element = document.getElementById(config.id);
-      if (element) {
-        this[config.id.replace('-', '_')] = new Chart(element, {
-          type: 'line',
-          data: {
-            labels: [],
-            datasets: [{
-              label: config.label,
-              data: [],
-              borderColor: config.color,
-              tension: 0.1,
-              fill: false
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            scales: {
-              y: {
-                beginAtZero: config.id === 'speed-chart'
-              }
-            },
-            plugins: {
-              legend: {
-                display: false
-              }
-            }
-          }
-        });
-        initialized++;
-      } else {
-        console.warn(`${config.id} element not found`);
-      }
-    });
-
-    // Log initialization status
-    console.log(`Initialized ${initialized} out of ${chartConfigs.length} charts`);
-    return initialized === chartConfigs.length;
   },
   
   // Initialize device marker and trail
@@ -546,77 +464,6 @@ const DeviceMapHook = {
     }
   },
   
-  // Update charts
-  updateCharts(metrics) {
-    try {
-      if (!metrics) {
-        console.warn("No metrics data provided for charts");
-        return;
-      }
-      
-      // Format timestamps for x-axis
-      const labels = metrics.timestamps.map(timestamp => {
-        if (!timestamp) return '';
-        
-        // Format as HH:MM:SS
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      });
-      
-      // Update RSSI chart
-      if (this.rssi_chart) {
-        this.updateChart(this.rssi_chart, labels, metrics.rssi);
-      }
-      
-      // Update SNR chart
-      if (this.snr_chart) {
-        this.updateChart(this.snr_chart, labels, metrics.snr);
-      }
-      
-      // Update Speed chart
-      if (this.speed_chart) {
-        this.updateChart(this.speed_chart, labels, metrics.speed);
-      }
-      
-      // Update Voltage chart
-      if (this.voltage_chart) {
-        this.updateChart(this.voltage_chart, labels, metrics.voltage);
-      }
-      
-      // Update Elevation chart
-      if (this.elevation_chart) {
-        this.updateChart(this.elevation_chart, labels, metrics.elevation);
-      }
-    } catch (error) {
-      console.error("Error updating charts:", error);
-    }
-  },
-  
-  // Helper to update a specific chart
-  updateChart(chart, labels, data) {
-    try {
-      if (!chart) return;
-      
-      // Update data and labels
-      chart.data.labels = labels;
-      chart.data.datasets[0].data = data;
-
-      // Adjust x-axis display based on number of points
-      const pointCount = labels.length;
-      chart.options.scales.x = {
-        ticks: {
-          maxTicksLimit: Math.min(20, Math.max(10, Math.floor(pointCount / 10))), // Dynamic tick count
-          autoSkip: true,
-          maxRotation: 0
-        }
-      };
-      
-      chart.update('none'); // Use 'none' mode for better performance
-    } catch (error) {
-      console.error("Error updating chart:", error);
-    }
-  },
-  
   destroyed() {
     try {
       // Clean up movement interval
@@ -637,14 +484,6 @@ const DeviceMapHook = {
       if (this.trailPointMarkers) {
         this.trailPointMarkers.forEach(marker => marker.remove());
       }
-      
-      // Clean up charts
-      const charts = [this.rssi_chart, this.snr_chart, this.speed_chart, this.voltage_chart, this.elevation_chart];
-      charts.forEach(chart => {
-        if (chart) {
-          chart.destroy();
-        }
-      });
       
       console.log("DeviceMapHook destroyed, resources cleaned up");
     } catch (error) {
@@ -705,4 +544,4 @@ document.head.insertAdjacentHTML('beforeend', `
   </style>
 `);
 
-export default DeviceMapHook; 
+export default DeviceMapHook;

@@ -1,6 +1,5 @@
 defmodule BuoyMapWeb.DeviceDetailLive do
   use BuoyMapWeb, :live_view
-  require Logger
 
   alias BuoyMap.DeviceStore
 
@@ -8,13 +7,10 @@ defmodule BuoyMapWeb.DeviceDetailLive do
   @max_trail_points 50
   @default_history_points 100
   @max_history_points 1000
-  @max_retries 3
 
   def mount(%{"id" => device_id}, _session, socket) do
-    Logger.info("DeviceDetailLive: Mounting for device: #{device_id}")
 
     if connected?(socket) do
-      Logger.info("DeviceDetailLive: Socket connected, subscribing to topics")
       Phoenix.PubSub.subscribe(BuoyMap.PubSub, "payload_created")
       Phoenix.PubSub.subscribe(BuoyMap.PubSub, "device_movements")
       :timer.send_interval(@update_interval, :update_device_data)
@@ -46,7 +42,7 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     {:ok, socket, layout: false}
   end
 
-  # All handle_event clauses grouped together
+  # All handle_event
   def handle_event("show_map_view", _params, socket) do
     {:noreply, push_navigate(socket, to: ~p"/")}
   end
@@ -67,11 +63,6 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     {:noreply, assign(socket, :map_loading, false)}
   end
 
-  def handle_event("charts_loaded_success", _params, socket) do
-    Logger.info("Charts loaded successfully")
-    {:noreply, assign(socket, :charts_loading, false)}
-  end
-
   def handle_event("reload_page", _params, socket) do
     {:noreply, socket |> redirect(to: ~p"/device/#{socket.assigns.device_id}")}
   end
@@ -86,16 +77,14 @@ defmodule BuoyMapWeb.DeviceDetailLive do
       current_device = socket.assigns.device
       updated_device = %{current_device | lon: lon, lat: lat}
 
-      # Update trail with new position
       current_trail = socket.assigns.trail
       new_point = [lon, lat]
       updated_trail = [new_point | current_trail] |> Enum.take(socket.assigns.history_points)
 
-      # Update DeviceStore
       DeviceStore.update_device(updated_device)
       DeviceStore.update_trail(device_id, updated_trail)
 
-      # Broadcast movement to other clients
+      # Broadcast
       Phoenix.PubSub.broadcast(
         BuoyMap.PubSub,
         "device_movements",
@@ -120,9 +109,7 @@ defmodule BuoyMapWeb.DeviceDetailLive do
   end
 
   def handle_event("update_history_points", %{"points" => value} = params, socket) do
-    Logger.info("Updating history points with params: #{inspect(params)}")
     points = String.to_integer(value)
-    Logger.info("New points value: #{points}")
 
     # Update metrics history with new size
     metrics_history = resize_metrics_history(socket.assigns.metrics_history, points)
@@ -131,7 +118,6 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     trail = DeviceStore.get_trail(socket.assigns.device_id) || []
     limited_trail = Enum.take(trail, points)
 
-    Logger.info("Trail size before: #{length(trail)}, after: #{length(limited_trail)}")
 
     socket =
       socket
@@ -143,7 +129,7 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     {:noreply, socket}
   end
 
-  # All handle_info clauses grouped together
+  # All handle_info
   def handle_info(:update_device_data, socket) do
     device = DeviceStore.get_device(socket.assigns.device_id)
     trail = DeviceStore.get_trail(socket.assigns.device_id)
@@ -151,7 +137,6 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     if device do
       metrics_history = update_metrics_history(socket.assigns.metrics_history, device)
 
-      # Update trail with current history points limit
       current_trail = if trail, do: Enum.take(trail, socket.assigns.history_points), else: []
 
       socket =
@@ -202,9 +187,8 @@ defmodule BuoyMapWeb.DeviceDetailLive do
         _ -> %{}
       end
 
-    # Only care about our specific device
+    # Specific device
     if payload_data != %{} && payload_data.device_id == socket.assigns.device_id do
-      # Get updated data from DeviceStore
       device = DeviceStore.get_device(socket.assigns.device_id)
       trail = DeviceStore.get_trail(socket.assigns.device_id)
 
@@ -245,16 +229,11 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     {:noreply, socket}
   end
 
-  # Catch-all handler for unmatched messages
-  def handle_info(_message, socket) do
-    {:noreply, socket}
-  end
-
   # Private functions
   defp initialize_metrics_history(points) do
     now = DateTime.utc_now()
 
-    # Create a list of timestamps for the last X points
+    # Create a list of timestamps
     timestamps =
       Enum.map(0..points, fn i ->
         DateTime.add(now, -i * @update_interval, :millisecond)
