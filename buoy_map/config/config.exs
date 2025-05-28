@@ -30,6 +30,9 @@ config :buoy_map, BuoyMapWeb.Endpoint,
 # at the `config/runtime.exs`.
 config :buoy_map, BuoyMap.Mailer, adapter: Swoosh.Adapters.Local
 
+config :buoy_map,
+  ecto_repos: [BuoyMap.Repo]
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.17.11",

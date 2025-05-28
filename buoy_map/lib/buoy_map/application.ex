@@ -8,6 +8,8 @@ defmodule BuoyMap.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      BuoyMap.Repo,
+
       BuoyMapWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:buoy_map, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: BuoyMap.PubSub},
