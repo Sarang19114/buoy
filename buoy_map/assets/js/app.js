@@ -25,10 +25,12 @@ import topbar from "../vendor/topbar"
 // Include your hook imports here
 import MapHook from "./hooks/map_hook";
 import DeviceMapHook from "./hooks/device_map_hook";
+import ChartHook from "./hooks/chart_hook"
 
 let Hooks = {
   MapHook,
-  DeviceMapHook
+  DeviceMapHook,
+  ChartHook
 };
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
