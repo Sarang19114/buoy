@@ -4,12 +4,10 @@ defmodule BuoyMapWeb.DeviceDetailLive do
   alias BuoyMap.DeviceStore
 
   @update_interval 2000
-  @max_trail_points 50
   @default_history_points 100
   @max_history_points 1000
 
   def mount(%{"id" => device_id}, _session, socket) do
-
     if connected?(socket) do
       Phoenix.PubSub.subscribe(BuoyMap.PubSub, "payload_created")
       Phoenix.PubSub.subscribe(BuoyMap.PubSub, "device_movements")
@@ -38,6 +36,7 @@ defmodule BuoyMapWeb.DeviceDetailLive do
       |> assign(:error, if(device, do: nil, else: "Device not found"))
       |> assign(:retry_count, 0)
       |> assign(:last_update, DateTime.utc_now())
+      |> assign(:active_chart, nil)
 
     {:ok, socket, layout: false}
   end
@@ -108,7 +107,7 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     end
   end
 
-  def handle_event("update_history_points", %{"points" => value} = params, socket) do
+  def handle_event("update_history_points", %{"points" => value} = _params, socket) do
     points = String.to_integer(value)
 
     # Update metrics history with new size
@@ -118,13 +117,37 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     trail = DeviceStore.get_trail(socket.assigns.device_id) || []
     limited_trail = Enum.take(trail, points)
 
-
     socket =
       socket
       |> assign(:history_points, points)
       |> assign(:metrics_history, metrics_history)
       |> assign(:trail, limited_trail)
       |> push_event("update_charts", %{metrics: metrics_history})
+
+    {:noreply, socket}
+  end
+
+  # Add new event handler for showing charts
+  def handle_event("show_chart", %{"type" => chart_type}, socket) do
+    socket =
+      socket
+      |> assign(:active_chart, chart_type)
+      |> push_event("toggle_view", %{
+        show_stats: false,
+        chart_type: chart_type
+      })
+
+    {:noreply, socket}
+  end
+
+  def handle_event("show_stats", _params, socket) do
+    socket =
+      socket
+      |> assign(:active_chart, nil)
+      |> push_event("toggle_view", %{
+        show_stats: true,
+        chart_type: nil
+      })
 
     {:noreply, socket}
   end
@@ -146,17 +169,15 @@ defmodule BuoyMapWeb.DeviceDetailLive do
         |> assign(:metrics_history, metrics_history)
         |> assign(:error, nil)
         |> assign(:last_update, DateTime.utc_now())
-        |> push_event("update_device_detail", %{device: device, trail: current_trail})
+        |> push_event("update_device_detail", %{
+          device: device,
+          trail: current_trail
+        })
         |> push_event("update_charts", %{metrics: metrics_history})
 
       {:noreply, socket}
     else
-      if socket.assigns.retry_count < @max_retries do
-        {:noreply, assign(socket, :retry_count, socket.assigns.retry_count + 1)}
-      else
-        {:noreply,
-         assign(socket, :error, "Unable to load device data. The device may no longer exist.")}
-      end
+      {:noreply, socket}
     end
   end
 
@@ -289,13 +310,23 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     <div class="flex flex-col h-screen w-screen bg-gray-50">
       <!-- Header/Navigation -->
       <div class="bg-white shadow-md p-4 border-b border-gray-200 flex items-center justify-between">
-        <h1 class="text-xl font-bold text-gray-800"><%= if @device, do: @device.name, else: "Loading..." %></h1>
-        <button
-          phx-click="show_map_view"
-          class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150"
-        >
-          Back to Map
-        </button>
+        <div class="flex items-center space-x-4">
+          <button
+            phx-click="show_map_view"
+            class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 flex items-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+            </svg>
+            Back to Map
+          </button>
+          <h1 class="text-xl font-bold text-gray-800"><%= if @device, do: @device.name, else: "Loading..." %></h1>
+        </div>
+        <div class="text-sm text-gray-500">
+          <%= if @device && Map.has_key?(@device, :updated_at) do %>
+            Last Update: <span class="font-medium"><%= Calendar.strftime(@device.updated_at, "%H:%M:%S") %></span>
+          <% end %>
+        </div>
       </div>
 
       <%= if @error do %>
@@ -312,165 +343,176 @@ defmodule BuoyMapWeb.DeviceDetailLive do
         </div>
       <% else %>
         <%= if @device do %>
-      <!-- Main content area -->
-      <div class="flex flex-col md:flex-row flex-1 overflow-hidden">
-        <!-- Left panel with map -->
-        <div class="w-full md:w-1/2 h-full md:h-auto">
-          <div id="device-map-container" class="relative h-[60vh] md:h-full" phx-update="ignore" phx-hook="DeviceMapHook" data-device-id={@device_id}>
-            <div id="device-map" class="h-full w-full"></div>
-          </div>
+          <!-- Main content area -->
+          <div class="flex flex-col md:flex-row flex-1 min-h-0">
+            <!-- Map container - top on mobile, right side on desktop -->
+            <div class="w-full md:w-1/2 h-[35vh] md:h-auto relative md:order-2 flex-shrink-0 z-10">
+              <div id="device-map-container" class="absolute inset-0" phx-update="ignore" phx-hook="DeviceMapHook" data-device-id={@device_id}>
+                <div id="device-map" class="h-full w-full"></div>
+              </div>
 
-          <%= if @map_loading do %>
-            <div class="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center z-50">
-              <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-              <p class="text-gray-600">Loading map...</p>
-              <button
-                class="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm"
-                phx-click="reload_page"
-              >
-                Reload if map doesn't appear
-              </button>
-            </div>
-          <% end %>
-        </div>
-
-        <!-- Right panel with metrics -->
-        <div class="w-full md:w-1/2 p-4 overflow-y-auto">
-          <!-- Device Status Card -->
-          <div class="bg-white rounded-lg shadow-lg p-4 mb-6">
-            <h2 class="text-lg font-semibold mb-3">Device Status</h2>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div class="bg-gray-50 p-3 rounded-md">
-                <div class="text-sm text-gray-500">Sequence #</div>
-                <div class="text-lg font-medium"><%= @device[:sequence_no] || "N/A" %></div>
-              </div>
-              <div class="bg-gray-50 p-3 rounded-md">
-                <div class="text-sm text-gray-500">Speed</div>
-                <div class="text-lg font-medium"><%= Float.round(@device[:avg_speed] || 0, 2) %> m/s</div>
-              </div>
-              <div class="bg-gray-50 p-3 rounded-md">
-                <div class="text-sm text-gray-500">Elevation</div>
-                <div class="text-lg font-medium"><%= Float.round(@device[:elevation] || 0, 1) %> m</div>
-              </div>
-              <div class="bg-gray-50 p-3 rounded-md">
-                <div class="text-sm text-gray-500">Battery</div>
-                <div class="text-lg font-medium"><%= Float.round(@device[:voltage] || 0, 2) %> V</div>
-              </div>
-              <div class="bg-gray-50 p-3 rounded-md">
-                <div class="text-sm text-gray-500">RSSI</div>
-                <div class="text-lg font-medium"><%= round(@device[:rssi] || 0) %> dBm</div>
-              </div>
-              <div class="bg-gray-50 p-3 rounded-md">
-                <div class="text-sm text-gray-500">SNR</div>
-                <div class="text-lg font-medium"><%= Float.round(@device[:snr] || 0, 1) %> dB</div>
-              </div>
-              <div class="bg-gray-50 p-3 rounded-md col-span-2 md:col-span-3">
-                <div class="text-sm text-gray-500">Last Connected Hotspot</div>
-                <div class="text-lg font-medium truncate"><%= @device[:hotspot] || "N/A" %></div>
-              </div>
+              <%= if @map_loading do %>
+                <div class="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center z-50">
+                  <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                  <p class="text-gray-600">Loading map...</p>
+                  <button
+                    class="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm"
+                    phx-click="reload_page"
+                  >
+                    Reload if map doesn't appear
+                  </button>
+                </div>
+              <% end %>
             </div>
 
-            <%= if Map.has_key?(@device, :updated_at) do %>
-              <div class="text-xs text-gray-500 mt-3 text-right">
-                Last update: <%= Calendar.strftime(@device.updated_at, "%H:%M:%S") %>
-              </div>
-            <% end %>
-          </div>
+            <!-- Content panel - below map on mobile, left on desktop -->
+            <div class="w-full md:w-1/2 md:order-1 flex-1 min-h-0 overflow-hidden">
+              <div class="h-full overflow-y-auto p-4">
+                <!-- Device Status Card -->
+                <div class="bg-white rounded-lg shadow-lg p-4 mb-2 mt-24 md:mt-0" id="device-status-card" phx-hook="DeviceStatusHook">
+                  <h2 class="text-lg font-semibold mb-3 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                    </svg>
+                    Current Status
+                  </h2>
 
-          <!-- Charts section -->
-          <div class="space-y-6 relative">
-            <%= if @charts_loading do %>
-              <div class="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center z-50 rounded-lg">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                <p class="text-gray-600">Loading charts...</p>
-              </div>
-            <% end %>
+                  <!-- Stats Grid -->
+                  <div id="stats-grid" class={if @active_chart, do: "hidden", else: "grid grid-cols-2 md:grid-cols-3 gap-3"}>
+                    <div class="bg-blue-50 p-3 rounded-lg">
+                      <div class="text-xs text-blue-600 font-medium mb-1">Sequence #</div>
+                      <div class="text-base font-semibold text-gray-800"><%= @device[:sequence_no] || "N/A" %></div>
+                    </div>
 
-            <!-- History Points Control -->
-    <div class="bg-white rounded-xl shadow-lg p-6">
-    <div class="flex items-center justify-between mb-3">
-    <h3 class="text-md font-semibold text-gray-800">History Points</h3>
-    </div>
-    <form phx-change="update_history_points">
-    <div class="flex items-center space-x-3">
-      <span class="text-sm text-gray-500 font-medium">50</span>
-      <input
-        type="range"
-        name="points"
-        min="50"
-        max={@max_history_points}
-        value={@history_points}
-        class="flex-1 h-2 bg-gradient-to-r from-blue-400 to-blue-600 rounded-lg appearance-none cursor-pointer transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-      <span class="text-sm text-gray-500 font-medium"><%= @max_history_points %></span>
-    </div>
-    </form>
-
-              <!-- Coordinate History Table -->
-              <div class="mt-4 border-t border-gray-200 pt-4">
-                <div class="flex items-center justify-between mb-2">
-                  <h3 class="text-md font-semibold">Coordinate History</h3>
-                  <div class="text-sm text-gray-500">
-                    <span class="font-medium text-blue-600"><%= @history_points %></span> points selected
-                    <%= if length(@trail) < @history_points do %>
-                      <span class="text-gray-400 ml-1">(<%= length(@trail) %> available)</span>
+                    <%= for {type, label, value, color} <- [
+                      {"speed", "Speed", Float.round(@device[:avg_speed] || 0, 2), "green"},
+                      {"elevation", "Elevation", Float.round(@device[:elevation] || 0, 1), "purple"},
+                      {"voltage", "Battery", Float.round(@device[:voltage] || 0, 2), "yellow"},
+                      {"rssi", "Signal Strength", round(@device[:rssi] || 0), "red"},
+                      {"snr", "Signal Quality", Float.round(@device[:snr] || 0, 1), "indigo"}
+                    ] do %>
+                      <button phx-click="show_chart" phx-value-type={type}
+                        class={"bg-#{color}-50 p-3 rounded-lg text-left hover:bg-#{color}-100 transition-colors duration-150"}>
+                        <div class={"text-xs text-#{color}-600 font-medium mb-1"}><%= label %></div>
+                        <div class="text-base font-semibold text-gray-800">
+                          <%= value %> <%= case type do
+                            "speed" -> "m/s"
+                            "elevation" -> "m"
+                            "voltage" -> "V"
+                            "rssi" -> "dBm"
+                            "snr" -> "dB"
+                          end %>
+                        </div>
+                      </button>
                     <% end %>
+
+                    <div class="bg-gray-50 p-3 rounded-lg col-span-2 md:col-span-3">
+                      <div class="text-xs text-gray-600 font-medium mb-1">Connected To</div>
+                      <div class="text-base font-semibold text-gray-800 truncate"><%= @device[:hotspot] || "N/A" %></div>
+                    </div>
+                  </div>
+
+                  <!-- Chart Containers -->
+                  <%= for {type, title} <- [
+                    {"speed", "Speed Over Time"},
+                    {"elevation", "Elevation Over Time"},
+                    {"voltage", "Battery Level Over Time"},
+                    {"rssi", "Signal Strength Over Time"},
+                    {"snr", "Signal Quality Over Time"}
+                  ] do %>
+                    <div id={"#{type}-chart"} class={if @active_chart == type, do: "mt-4", else: "hidden mt-4"}>
+                      <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold"><%= title %></h3>
+                        <button phx-click="show_stats" class="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+                        <p class="text-gray-500">Chart will be implemented soon</p>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+
+                <!-- History Points Control -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      History Points
+                    </h3>
+                    <div class="text-sm text-gray-500">
+                      Showing <span class="font-medium text-blue-600"><%= @history_points %></span> points
+                    </div>
+                  </div>
+                  <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                    <p class="text-sm text-gray-600 mb-3">
+                      Adjust the slider to see more or fewer location points. More points show a longer history but may load slower.
+                    </p>
+                    <form phx-change="update_history_points" class="space-y-2">
+                      <div class="flex items-center space-x-3">
+                        <span class="text-sm font-medium text-gray-500">50</span>
+                        <input
+                          type="range"
+                          name="points"
+                          min="50"
+                          max={@max_history_points}
+                          value={@history_points}
+                          class="flex-1 h-2 bg-gradient-to-r from-blue-400 to-blue-600 rounded-lg appearance-none cursor-pointer transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span class="text-sm font-medium text-gray-500"><%= @max_history_points %></span>
+                      </div>
+                    </form>
+                  </div>
+
+                  <!-- Coordinate History Table -->
+                  <div class="overflow-hidden">
+                    <div class="flex items-center justify-between mb-2">
+                      <h3 class="text-md font-semibold">Location History</h3>
+                      <div class="text-sm text-gray-500">
+                        <%= if length(@trail) < @history_points do %>
+                          <span class="text-gray-400">(<%= length(@trail) %> points available)</span>
+                        <% end %>
+                      </div>
+                    </div>
+
+                    <!-- Make table wrapper responsive -->
+                    <div class="max-h-[420px] overflow-y-auto border border-gray-200 rounded-lg w-full overflow-x-auto">
+                      <table class="w-full table-auto divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th class="py-2 px-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">#</th>
+                            <th class="py-2 px-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Longitude</th>
+                            <th class="py-2 px-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Latitude</th>
+                            <th class="py-2 px-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Time</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          <%= for {{[lon, lat], timestamp}, index} <- Enum.zip(Enum.take(@trail, @history_points), get_timestamps(@history_points)) |> Enum.with_index() do %>
+                            <tr class="hover:bg-gray-50">
+                              <td class="py-1.5 px-2 text-gray-500"><%= index + 1 %></td>
+                              <td class="py-1.5 px-2 font-mono"><%= Float.round(lon, 6) %></td>
+                              <td class="py-1.5 px-2 font-mono"><%= Float.round(lat, 6) %></td>
+                              <td class="py-1.5 px-2 text-gray-500 whitespace-nowrap">
+                                <%= Calendar.strftime(timestamp, "%H:%M:%S") %>
+                              </td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-                <div class="max-h-[500px] overflow-y-auto">
-                  <table class="min-w-full">
-                    <thead class="bg-gray-50 sticky top-0">
-                      <tr>
-                        <th class="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th class="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Longitude</th>
-                        <th class="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Latitude</th>
-                        <th class="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
-                      </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                      <%= for {{[lon, lat], timestamp}, index} <- Enum.zip(Enum.take(@trail, @history_points), get_timestamps(@history_points)) |> Enum.with_index() do %>
-                        <tr class="hover:bg-gray-50">
-                          <td class="py-2 px-3 text-sm text-gray-500"><%= index + 1 %></td>
-                          <td class="py-2 px-3 text-sm font-mono"><%= Float.round(lon, 6) %></td>
-                          <td class="py-2 px-3 text-sm font-mono"><%= Float.round(lat, 6) %></td>
-                          <td class="py-2 px-3 text-sm text-gray-500">
-                            <%= Calendar.strftime(timestamp, "%H:%M:%S") %>
-                          </td>
-                        </tr>
-                      <% end %>
-                    </tbody>
-                  </table>
-                </div>
+
+                <!-- Selected Chart Section -->
               </div>
             </div>
-
-            <div class="bg-white rounded-lg shadow-lg p-4">
-              <h3 class="text-md font-semibold mb-2">Signal Strength (RSSI)</h3>
-              <div class="h-48" id="rssi-chart" phx-update="ignore"></div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow-lg p-4">
-              <h3 class="text-md font-semibold mb-2">Signal-to-Noise Ratio (SNR)</h3>
-              <div class="h-48" id="snr-chart" phx-update="ignore"></div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow-lg p-4">
-              <h3 class="text-md font-semibold mb-2">Speed</h3>
-              <div class="h-48" id="speed-chart" phx-update="ignore"></div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow-lg p-4">
-              <h3 class="text-md font-semibial mb-2">Battery Voltage</h3>
-              <div class="h-48" id="voltage-chart" phx-update="ignore"></div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow-lg p-4">
-              <h3 class="text-md font-semibold mb-2">Elevation</h3>
-              <div class="h-48" id="elevation-chart" phx-update="ignore"></div>
-            </div>
           </div>
-        </div>
-      </div>
         <% else %>
           <div class="flex-1 flex items-center justify-center">
             <div class="text-center">

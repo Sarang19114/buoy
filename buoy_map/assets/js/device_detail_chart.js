@@ -127,23 +127,4 @@ function getYAxisLabel(type) {
     snr: 'Decibels (dB)'
   };
   return labels[type] || '';
-}
-
-// Chart visibility handling for device detail page
-
-window.addEventListener('phx:hide_all_charts', () => {
-  document.querySelectorAll('[id$="-chart"]').forEach(chart => {
-    chart.classList.add('hidden');
-  });
-});
-
-window.addEventListener('phx:show_chart', (e) => {
-  const { type } = e.detail;
-  const chartId = `${type}-chart`;
-  const chartElement = document.getElementById(chartId);
-
-  if (chartElement) {
-    // Show this chart
-    chartElement.classList.remove('hidden');
-  }
-}); 
+} 

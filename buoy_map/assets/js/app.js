@@ -30,7 +30,31 @@ import ChartHook from "./hooks/chart_hook"
 let Hooks = {
   MapHook,
   DeviceMapHook,
-  ChartHook
+  ChartHook,
+  DeviceStatusHook: {
+    mounted() {
+      this.handleEvent("toggle_view", ({ show_stats, chart_type }) => {
+        const statsGrid = document.getElementById('stats-grid');
+        const chartContainers = document.querySelectorAll('[id$="-chart"]');
+        
+        if (show_stats) {
+          // Show stats grid and hide all charts
+          statsGrid.classList.remove('hidden');
+          chartContainers.forEach(chart => chart.classList.add('hidden'));
+        } else {
+          // Hide stats grid and show selected chart
+          statsGrid.classList.add('hidden');
+          chartContainers.forEach(chart => {
+            if (chart.id === `${chart_type}-chart`) {
+              chart.classList.remove('hidden');
+            } else {
+              chart.classList.add('hidden');
+            }
+          });
+        }
+      });
+    }
+  }
 };
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
