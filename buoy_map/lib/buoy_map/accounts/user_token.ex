@@ -6,6 +6,9 @@ defmodule BuoyMap.Accounts.UserToken do
   @hash_algorithm :sha256
   @rand_size 32
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
   # It is very important to keep the reset password token expiry short,
   # since someone with access to the email may take over the account.
   @reset_password_validity_in_days 1

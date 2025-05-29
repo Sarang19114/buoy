@@ -33,6 +33,9 @@ config :buoy_map, BuoyMap.Mailer, adapter: Swoosh.Adapters.Local
 config :buoy_map,
   ecto_repos: [BuoyMap.Repo]
 
+config :buoy_map, BuoyMap.Repo,
+  migration_primary_key: [name: :id, type: :binary_id]
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.17.11",

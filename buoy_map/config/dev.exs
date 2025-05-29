@@ -44,9 +44,9 @@ config :buoy_map, BuoyMapWeb.Endpoint,
 
 config :buoy_map, BuoyMap.Repo,
   adapter: Ecto.Adapters.Postgres,
-  username: "buoy_map_user",
+  username: "buoy_dev",
   password: "postgres_buoy",
-  database: "buoy_map_dev",
+  database: "buoy_map_db",
   hostname: "localhost",
   pool_size: 10,
   show_sensitive_data_on_connection_error: true 
