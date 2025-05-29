@@ -3,7 +3,18 @@ defmodule BuoyMap.Application do
 
   def start(_type, _args) do
     children = [
-      {BuoyMap.DeviceStore, []},
+      # Start the Telemetry supervisor
+      BuoyMapWeb.Telemetry,
+      # Start the PubSub system
+      {Phoenix.PubSub, name: BuoyMap.PubSub},
+      # Start the Endpoint (http/https)
+      BuoyMapWeb.Endpoint,
+      # Start the DeviceStore
+      BuoyMap.DeviceStore,
+      # Start the StatsStore
+      BuoyMap.StatsStore
+      # Start a worker by calling: BuoyMap.Worker.start_link(arg)
+      # {BuoyMap.Worker, arg}
     ]
 
     opts = [strategy: :one_for_one, name: BuoyMap.Supervisor]

@@ -44,6 +44,42 @@ const DeviceMapHook = {
           this.updateDevice(data.device, data.trail);
         }
       });
+
+      // Handle coordinate highlighting
+      this.handleEvent("highlight_coordinate", ({ coordinate, index }) => {
+        if (!this.map || !coordinate) return;
+
+        // Update trail point markers to highlight selected point
+        if (this.trailPointMarkers) {
+          this.trailPointMarkers.forEach((marker, i) => {
+            const el = marker.getElement();
+            if (i === index - 1) { // Subtract 1 because trail points start from index 1
+              // Highlight selected point
+              el.style.width = '25px';
+              el.style.height = '25px';
+              el.style.backgroundColor = '#ff4444';
+              el.style.border = '2px solid white';
+              el.style.boxShadow = '0 0 8px rgba(255, 107, 107, 0.8)';
+            } else {
+              // Keep other points as they are
+              const size = Math.max(3, 7 - ((i + 1) * 0.15));
+              el.style.width = `${size}px`;
+              el.style.height = `${size}px`;
+              el.style.backgroundColor = '#ff6b6b';
+              el.style.border = '1px solid white';
+              el.style.boxShadow = '0 0 3px rgba(0, 0, 0, 0.3)';
+            }
+          });
+        }
+
+        // Pan to the coordinate
+        this.map.easeTo({
+          center: coordinate,
+          duration: 1000,
+          zoom: this.map.getZoom() < 14 ? 14 : this.map.getZoom()
+        });
+      });
+
     } catch (error) {
       console.error("Error in DeviceMapHook initialization:", error);
       // Notify the server of the error
@@ -392,6 +428,7 @@ const DeviceMapHook = {
       el.style.border = '1px solid white';
       el.style.opacity = opacity;
       el.style.boxShadow = '0 0 3px rgba(0, 0, 0, 0.3)';
+      el.style.transition = 'all 0.3s ease';
       
       const marker = new maplibregl.Marker({
         element: el,
@@ -480,6 +517,10 @@ const DeviceMapHook = {
       if (this.deviceMarker) {
         this.deviceMarker.remove();
       }
+
+      if (this.highlightMarker) {
+        this.highlightMarker.remove();
+      }
       
       if (this.trailPointMarkers) {
         this.trailPointMarkers.forEach(marker => marker.remove());
@@ -540,6 +581,70 @@ document.head.insertAdjacentHTML('beforeend', `
     /* Enhance trail line style */
     .maplibregl-canvas {
       outline: none;
+    }
+  </style>
+`);
+
+// Add styles for highlight marker animation
+document.head.insertAdjacentHTML('beforeend', `
+  <style>
+    @keyframes highlight-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+        transform: scale(1);
+      }
+      50% {
+        box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.5);
+        transform: scale(1.2);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+        transform: scale(1);
+      }
+    }
+
+    .highlight-marker {
+      animation: highlight-pulse 1.5s infinite;
+      cursor: pointer;
+      z-index: 1000;
+    }
+
+    .highlight-popup .maplibregl-popup-content {
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      padding: 0;
+    }
+
+    .trail-point-marker {
+      transition: all 0.3s ease;
+    }
+  </style>
+`);
+
+// Add styles for trail point markers
+document.head.insertAdjacentHTML('beforeend', `
+  <style>
+    .trail-point-marker {
+      transition: all 0.3s ease;
+    }
+
+    @keyframes trail-point-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.8);
+        transform: scale(1.2);
+      }
+      50% {
+        box-shadow: 0 0 10px 2px rgba(255, 107, 107, 0.5);
+        transform: scale(1.3);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.8);
+        transform: scale(1.2);
+      }
+    }
+
+    .trail-point-marker.highlighted {
+      animation: trail-point-pulse 1.5s infinite;
     }
   </style>
 `);

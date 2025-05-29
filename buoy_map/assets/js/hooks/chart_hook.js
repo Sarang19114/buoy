@@ -3,177 +3,219 @@ import Chart from 'chart.js/auto';
 const ChartHook = {
   mounted() {
     this.charts = {};
-    
-    // Listen for chart data updates
-    this.handleEvent("show_chart", ({ type, data }) => {
-      this.showChart(type, data);
+
+    // Handle showing specific charts
+    this.handleEvent("show_chart", ({ chart_type, metrics }) => {
+      if (!metrics) return;
+      
+      setTimeout(() => {
+        this.createChart(chart_type, metrics);
+      }, 100); // Small delay to ensure DOM is ready
     });
-    
+
+    // Handle chart updates
     this.handleEvent("update_charts", ({ metrics }) => {
-      if (this.currentChart) {
-        this.updateChart(this.currentChart.type, metrics);
+      if (!metrics) return;
+
+      // Update all existing charts
+      Object.keys(this.charts).forEach(type => {
+        if (this.charts[type] && !this.charts[type].destroyed) {
+          this.updateChart(type, metrics);
+        }
+      });
+    });
+
+    // Handle toggling between stats and charts
+    this.handleEvent("toggle_view", ({ show_stats, chart_type }) => {
+      const statsGrid = document.getElementById('stats-grid');
+      const chartsContainer = document.getElementById('charts-container');
+      
+      if (show_stats) {
+        statsGrid.classList.remove('hidden');
+        chartsContainer.classList.add('hidden');
+        // Destroy all charts to free up memory
+        Object.keys(this.charts).forEach(type => {
+          if (this.charts[type] && !this.charts[type].destroyed) {
+            this.charts[type].destroy();
+          }
+        });
+        this.charts = {};
+      } else {
+        statsGrid.classList.add('hidden');
+        chartsContainer.classList.remove('hidden');
       }
     });
   },
-  
-  showChart(type, data) {
-    // Destroy existing chart if any
-    if (this.currentChart) {
-      this.currentChart.chart.destroy();
+
+  createChart(type, metrics) {
+    const canvas = document.getElementById(`${type}-chart-canvas`);
+    if (!canvas) return;
+
+    // Destroy existing chart if it exists
+    if (this.charts[type]) {
+      this.charts[type].destroy();
     }
+
+    const labels = metrics.timestamps.map(ts => {
+      if (!ts) return '';
+      const date = new Date(ts);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    });
+
+    const data = metrics[type] || [];
     
-    const ctx = document.getElementById(`${type}-chart`);
-    if (!ctx) return;
-    
-    const chartData = this.prepareChartData(type, data);
-    
-    this.currentChart = {
-      type,
-      chart: new Chart(ctx, {
-        type: 'line',
-        data: chartData,
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: {
-            duration: 0 // Disable animation for real-time updates
-          },
-          plugins: {
-            legend: {
-              display: false
+    // Filter out null/undefined values for better display
+    const processedData = data.map(value => value === null || value === undefined ? null : value);
+
+    this.charts[type] = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: this.getChartLabel(type),
+          data: processedData,
+          borderColor: this.getChartColor(type),
+          backgroundColor: this.getChartBackgroundColor(type),
+          tension: 0.4,
+          fill: false,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: this.getChartColor(type),
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          spanGaps: true // Connect line even if there are null values
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: {
+          duration: 300
+        },
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        },
+        scales: {
+          y: {
+            beginAtZero: this.shouldBeginAtZero(type),
+            grid: {
+              color: 'rgba(0,0,0,0.1)'
             },
-            title: {
-              display: true,
-              text: this.getChartTitle(type),
-              font: {
-                size: 16,
-                weight: 'bold'
-              },
-              padding: {
-                top: 10,
-                bottom: 20
-              }
+            ticks: {
+              callback: function(value) {
+                return value + ' ' + this.getUnit(type);
+              }.bind(this)
             }
           },
-          scales: {
-            x: {
-              type: 'time',
-              time: {
-                unit: 'second',
-                displayFormats: {
-                  second: 'HH:mm:ss'
-                }
-              },
-              title: {
-                display: true,
-                text: 'Time',
-                font: {
-                  size: 12,
-                  weight: 'bold'
-                }
-              },
-              grid: {
-                display: true,
-                color: 'rgba(0,0,0,0.1)'
-              }
+          x: {
+            grid: {
+              display: false
             },
-            y: {
-              beginAtZero: false,
-              title: {
-                display: true,
-                text: this.getYAxisLabel(type),
-                font: {
-                  size: 12,
-                  weight: 'bold'
-                }
-              },
-              grid: {
-                display: true,
-                color: 'rgba(0,0,0,0.1)'
-              }
+            ticks: {
+              maxTicksLimit: 8
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              usePointStyle: true,
+              padding: 20
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const value = context.parsed.y;
+                const unit = this.getUnit(type);
+                return `${context.dataset.label}: ${value}${unit}`;
+              }.bind(this)
             }
           }
         }
-      })
-    };
+      }
+    });
   },
-  
-  updateChart(type, data) {
-    if (!this.currentChart || !this.currentChart.chart) return;
-    
-    const chartData = this.prepareChartData(type, data);
-    if (chartData) {
-      this.currentChart.chart.data = chartData;
-      this.currentChart.chart.update('none'); // Update without animation
-    }
+
+  updateChart(type, metrics) {
+    const chart = this.charts[type];
+    if (!chart || chart.destroyed) return;
+
+    const labels = metrics.timestamps.map(ts => {
+      if (!ts) return '';
+      const date = new Date(ts);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    });
+
+    const data = metrics[type] || [];
+    const processedData = data.map(value => value === null || value === undefined ? null : value);
+
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = processedData;
+    chart.update('none'); // Update without animation for real-time feel
   },
-  
-  prepareChartData(type, data) {
-    if (!data || !data.timestamps || !data[type]) return null;
-    
-    const timestamps = data.timestamps;
-    const values = data[type];
-    
-    return {
-      labels: timestamps,
-      datasets: [{
-        data: values.map((value, index) => ({
-          x: new Date(timestamps[index]),
-          y: value
-        })),
-        borderColor: this.getChartColor(type),
-        backgroundColor: this.getChartColor(type, 0.2),
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4,
-        pointRadius: 3,
-        pointHoverRadius: 5,
-        pointBackgroundColor: this.getChartColor(type),
-        pointBorderColor: '#fff',
-        pointBorderWidth: 1
-      }]
-    };
-  },
-  
-  getChartTitle(type) {
-    const titles = {
-      avg_speed: 'Speed History',
-      elevation: 'Elevation History',
-      voltage: 'Battery Level History',
-      rssi: 'Signal Strength History',
-      snr: 'Signal Quality History'
-    };
-    return titles[type] || type;
-  },
-  
-  getYAxisLabel(type) {
+
+  getChartLabel(type) {
     const labels = {
-      avg_speed: 'Speed (m/s)',
-      elevation: 'Elevation (m)',
-      voltage: 'Voltage (V)',
-      rssi: 'RSSI (dBm)',
-      snr: 'SNR (dB)'
+      speed: 'Speed',
+      elevation: 'Elevation',
+      voltage: 'Battery Voltage',
+      rssi: 'Signal Strength',
+      snr: 'Signal Quality'
     };
-    return labels[type] || '';
+    return labels[type] || type.charAt(0).toUpperCase() + type.slice(1);
   },
-  
-  getChartColor(type, alpha = 1) {
+
+  getChartColor(type) {
     const colors = {
-      avg_speed: `rgba(34, 197, 94, ${alpha})`,
-      elevation: `rgba(168, 85, 247, ${alpha})`,
-      voltage: `rgba(234, 179, 8, ${alpha})`,
-      rssi: `rgba(239, 68, 68, ${alpha})`,
-      snr: `rgba(99, 102, 241, ${alpha})`
+      speed: '#22c55e',      // green-500
+      elevation: '#a855f7',  // purple-500
+      voltage: '#eab308',    // yellow-500
+      rssi: '#ef4444',       // red-500
+      snr: '#6366f1'         // indigo-500
     };
-    return colors[type] || `rgba(107, 114, 128, ${alpha})`;
+    return colors[type] || '#3b82f6';  // default to blue-500
   },
-  
+
+  getChartBackgroundColor(type) {
+    const colors = {
+      speed: 'rgba(34, 197, 94, 0.1)',      // green with opacity
+      elevation: 'rgba(168, 85, 247, 0.1)',  // purple with opacity
+      voltage: 'rgba(234, 179, 8, 0.1)',     // yellow with opacity
+      rssi: 'rgba(239, 68, 68, 0.1)',        // red with opacity
+      snr: 'rgba(99, 102, 241, 0.1)'         // indigo with opacity
+    };
+    return colors[type] || 'rgba(59, 130, 246, 0.1)';  // default to blue with opacity
+  },
+
+  getUnit(type) {
+    const units = {
+      speed: ' m/s',
+      elevation: ' m',
+      voltage: ' V',
+      rssi: ' dBm',
+      snr: ' dB'
+    };
+    return units[type] || '';
+  },
+
+  shouldBeginAtZero(type) {
+    // Some metrics like RSSI can be negative, so don't force zero
+    return !['rssi', 'snr'].includes(type);
+  },
+
   destroyed() {
-    // Clean up charts
-    if (this.currentChart && this.currentChart.chart) {
-      this.currentChart.chart.destroy();
-    }
+    // Cleanup all charts when hook is destroyed
+    Object.values(this.charts).forEach(chart => {
+      if (chart && !chart.destroyed) {
+        chart.destroy();
+      }
+    });
+    this.charts = {};
   }
 };
 
-export default ChartHook; 
+export default ChartHook;

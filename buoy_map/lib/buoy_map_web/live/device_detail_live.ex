@@ -132,9 +132,14 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     socket =
       socket
       |> assign(:active_chart, chart_type)
+      |> assign(:charts_loading, false)
       |> push_event("toggle_view", %{
         show_stats: false,
         chart_type: chart_type
+      })
+      |> push_event("show_chart", %{
+        chart_type: chart_type,
+        metrics: socket.assigns.metrics_history
       })
 
     {:noreply, socket}
@@ -147,6 +152,18 @@ defmodule BuoyMapWeb.DeviceDetailLive do
       |> push_event("toggle_view", %{
         show_stats: true,
         chart_type: nil
+      })
+
+    {:noreply, socket}
+  end
+
+  # Add new event handler for highlighting coordinates
+  def handle_event("highlight_coordinate", %{"coordinate" => coordinate, "index" => index}, socket) do
+    socket =
+      socket
+      |> push_event("highlight_coordinate", %{
+        coordinate: coordinate,
+        index: index
       })
 
     {:noreply, socket}
@@ -376,6 +393,9 @@ defmodule BuoyMapWeb.DeviceDetailLive do
                         d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
                     </svg>
                     Current Status
+                    <%= if @active_chart == nil do %>
+                      <span class="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Click cards to view charts</span>
+                    <% end %>
                   </h2>
 
                   <!-- Stats Grid -->
@@ -393,7 +413,13 @@ defmodule BuoyMapWeb.DeviceDetailLive do
                       {"snr", "Signal Quality", Float.round(@device[:snr] || 0, 1), "indigo"}
                     ] do %>
                       <button phx-click="show_chart" phx-value-type={type}
-                        class={"bg-#{color}-50 p-3 rounded-lg text-left hover:bg-#{color}-100 transition-colors duration-150"}>
+                        class={"group bg-#{color}-50 p-3 rounded-lg text-left hover:bg-#{color}-100 transition-all duration-150 relative overflow-hidden hover:shadow-md transform hover:scale-105"}>
+                        <!-- Chart Icon -->
+                        <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                        </div>
                         <div class={"text-xs text-#{color}-600 font-medium mb-1"}><%= label %></div>
                         <div class="text-base font-semibold text-gray-800">
                           <%= value %> <%= case type do
@@ -414,27 +440,29 @@ defmodule BuoyMapWeb.DeviceDetailLive do
                   </div>
 
                   <!-- Chart Containers -->
-                  <%= for {type, title} <- [
-                    {"speed", "Speed Over Time"},
-                    {"elevation", "Elevation Over Time"},
-                    {"voltage", "Battery Level Over Time"},
-                    {"rssi", "Signal Strength Over Time"},
-                    {"snr", "Signal Quality Over Time"}
-                  ] do %>
-                    <div id={"#{type}-chart"} class={if @active_chart == type, do: "mt-4", else: "hidden mt-4"}>
-                      <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-semibold"><%= title %></h3>
-                        <button phx-click="show_stats" class="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100">
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                          </svg>
-                        </button>
+                  <div id="charts-container" phx-hook="ChartHook" phx-update="ignore" class={if @active_chart, do: "", else: "hidden"}>
+                    <%= for {type, title} <- [
+                      {"speed", "Speed Over Time"},
+                      {"elevation", "Elevation Over Time"},
+                      {"voltage", "Battery Level Over Time"},
+                      {"rssi", "Signal Strength Over Time"},
+                      {"snr", "Signal Quality Over Time"}
+                    ] do %>
+                      <div id={"#{type}-chart"} class={if @active_chart == type, do: "mt-4", else: "hidden mt-4"}>
+                        <div class="flex items-center justify-between mb-4">
+                          <h3 class="text-lg font-semibold"><%= title %></h3>
+                          <button phx-click="show_stats" class="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100 transition-colors duration-150">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div class="h-64 bg-white rounded-lg border border-gray-200 p-4">
+                          <canvas id={"#{type}-chart-canvas"} class="w-full h-full"></canvas>
+                        </div>
                       </div>
-                      <div class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
-                        <p class="text-gray-500">Chart will be implemented soon</p>
-                      </div>
-                    </div>
-                  <% end %>
+                    <% end %>
+                  </div>
                 </div>
 
                 <!-- History Points Control -->
@@ -473,7 +501,10 @@ defmodule BuoyMapWeb.DeviceDetailLive do
                   <!-- Coordinate History Table -->
                   <div class="overflow-hidden">
                     <div class="flex items-center justify-between mb-2">
-                      <h3 class="text-md font-semibold">Location History</h3>
+                      <h3 class="text-md font-semibold flex items-center">
+                        Location History
+                        <span class="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Click rows to highlight on map</span>
+                      </h3>
                       <div class="text-sm text-gray-500">
                         <%= if length(@trail) < @history_points do %>
                           <span class="text-gray-400">(<%= length(@trail) %> points available)</span>
@@ -494,12 +525,22 @@ defmodule BuoyMapWeb.DeviceDetailLive do
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
                           <%= for {{[lon, lat], timestamp}, index} <- Enum.zip(Enum.take(@trail, @history_points), get_timestamps(@history_points)) |> Enum.with_index() do %>
-                            <tr class="hover:bg-gray-50">
-                              <td class="py-1.5 px-2 text-gray-500"><%= index + 1 %></td>
-                              <td class="py-1.5 px-2 font-mono"><%= Float.round(lon, 6) %></td>
-                              <td class="py-1.5 px-2 font-mono"><%= Float.round(lat, 6) %></td>
-                              <td class="py-1.5 px-2 text-gray-500 whitespace-nowrap">
+                            <tr class="hover:bg-blue-50 cursor-pointer transition-colors duration-150 group"
+                                phx-click="highlight_coordinate"
+                                phx-value-coordinate={Jason.encode!([lon, lat])}
+                                phx-value-index={index}>
+                              <td class="py-1.5 px-2 text-gray-500 group-hover:text-blue-600"><%= index + 1 %></td>
+                              <td class="py-1.5 px-2 font-mono group-hover:text-blue-700"><%= Float.round(lon, 6) %></td>
+                              <td class="py-1.5 px-2 font-mono group-hover:text-blue-700"><%= Float.round(lat, 6) %></td>
+                              <td class="py-1.5 px-2 text-gray-500 whitespace-nowrap group-hover:text-blue-600">
                                 <%= Calendar.strftime(timestamp, "%H:%M:%S") %>
+                              </td>
+                              <!-- Location Icon -->
+                              <td class="py-1.5 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
                               </td>
                             </tr>
                           <% end %>
