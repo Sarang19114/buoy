@@ -567,3 +567,4 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     """
   end
 end
+

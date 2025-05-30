@@ -49,32 +49,68 @@ const DeviceMapHook = {
       this.handleEvent("highlight_coordinate", ({ coordinate, index }) => {
         if (!this.map || !coordinate) return;
 
-        // Update trail point markers to highlight selected point
-        if (this.trailPointMarkers) {
-          this.trailPointMarkers.forEach((marker, i) => {
-            const el = marker.getElement();
-            if (i === index - 1) { // Subtract 1 because trail points start from index 1
-              // Highlight selected point
-              el.style.width = '25px';
-              el.style.height = '25px';
-              el.style.backgroundColor = '#ff4444';
-              el.style.border = '2px solid white';
-              el.style.boxShadow = '0 0 8px rgba(255, 107, 107, 0.8)';
-            } else {
-              // Keep other points as they are
-              const size = Math.max(3, 7 - ((i + 1) * 0.15));
-              el.style.width = `${size}px`;
-              el.style.height = `${size}px`;
-              el.style.backgroundColor = '#ff6b6b';
-              el.style.border = '1px solid white';
-              el.style.boxShadow = '0 0 3px rgba(0, 0, 0, 0.3)';
-            }
+        const parsedCoordinate = typeof coordinate === 'string' ? JSON.parse(coordinate) : coordinate;
+        
+        // Remove existing highlight layers
+        ['trail-points-highlight-glow', 'trail-points-highlight'].forEach(layerId => {
+          if (this.map.getLayer(layerId)) {
+            this.map.removeLayer(layerId);
+          }
+        });
+
+        // Create a single-point GeoJSON for the highlighted point
+        const highlightGeoJSON = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: parsedCoordinate
+            },
+            properties: {}
+          }]
+        };
+
+        // Add or update the highlight source
+        if (this.map.getSource('highlight-point')) {
+          this.map.getSource('highlight-point').setData(highlightGeoJSON);
+        } else {
+          this.map.addSource('highlight-point', {
+            type: 'geojson',
+            data: highlightGeoJSON
           });
         }
 
+        // Add highlight glow layer
+        this.map.addLayer({
+          id: 'trail-points-highlight-glow',
+          type: 'circle',
+          source: 'highlight-point',
+          paint: {
+            'circle-radius': 12,
+            'circle-color': '#ff0000',
+            'circle-opacity': 0.2,
+            'circle-blur': 0.8
+          }
+        });
+
+        // Add highlight layer
+        this.map.addLayer({
+          id: 'trail-points-highlight',
+          type: 'circle',
+          source: 'highlight-point',
+          paint: {
+            'circle-radius': 8,
+            'circle-color': '#ff0000',
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-opacity': 0.9
+          }
+        });
+
         // Pan to the coordinate
         this.map.easeTo({
-          center: coordinate,
+          center: parsedCoordinate,
           duration: 1000,
           zoom: this.map.getZoom() < 14 ? 14 : this.map.getZoom()
         });
@@ -301,8 +337,24 @@ const DeviceMapHook = {
           coordinates: trail
         }
       };
+
+      // Create GeoJSON for trail points
+      const pointsGeoJSON = {
+        type: 'FeatureCollection',
+        features: trail.map((point, index) => ({
+          type: 'Feature',
+          properties: {
+            index: index,
+            isHighlighted: false
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: point
+          }
+        }))
+      };
       
-      // Add source if it doesn't exist
+      // Add or update trail line source
       if (this.map.getSource('trail')) {
         this.map.getSource('trail').setData(trailGeoJSON);
       } else {
@@ -345,25 +397,46 @@ const DeviceMapHook = {
             'line-opacity': 0.9
           }
         });
-        
-        // Add trail points layer
+      }
+
+      // Add or update trail points source
+      if (this.map.getSource('trail-points')) {
+        this.map.getSource('trail-points').setData(pointsGeoJSON);
+      } else {
+        this.map.addSource('trail-points', {
+          type: 'geojson',
+          data: pointsGeoJSON
+        });
+
+        // Add trail points glow
+        this.map.addLayer({
+          id: 'trail-points-glow',
+          type: 'circle',
+          source: 'trail-points',
+          paint: {
+            'circle-radius': 6,
+            'circle-color': '#ff6b6b',
+            'circle-opacity': 0.4,
+            'circle-blur': 1
+          }
+        });
+
+        // Add trail points
         this.map.addLayer({
           id: 'trail-points',
           type: 'circle',
-          source: 'trail',
+          source: 'trail-points',
           paint: {
             'circle-radius': 4,
             'circle-color': '#ff6b6b',
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#ffffff'
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-opacity': 0.9
           }
         });
-        
-        console.log("Trail layers added to map");
       }
       
-      // Add trail point markers
-      this.addTrailPointMarkers(trail);
+      console.log("Trail layers added to map");
     } catch (error) {
       console.error("Error drawing trail:", error);
     }
@@ -391,73 +464,34 @@ const DeviceMapHook = {
         };
         
         this.map.getSource('trail').setData(trailGeoJSON);
+
+        // Update trail points
+        const pointsGeoJSON = {
+          type: 'FeatureCollection',
+          features: trail.map((point, index) => ({
+            type: 'Feature',
+            properties: {
+              index: index,
+              isHighlighted: false
+            },
+            geometry: {
+              type: 'Point',
+              coordinates: point
+            }
+          }))
+        };
+
+        if (this.map.getSource('trail-points')) {
+          this.map.getSource('trail-points').setData(pointsGeoJSON);
+        }
       } else {
         this.drawTrail(trail);
       }
-      
-      // Update trail point markers
-      this.updateTrailPointMarkers(trail);
     } catch (error) {
       console.error("Error updating trail:", error);
     }
   },
-  
-  // Add small markers for trail points
-  addTrailPointMarkers(trail) {
-    // Remove existing trail point markers
-    this.removeTrailPointMarkers();
-    
-    // Create array to store markers
-    this.trailPointMarkers = [];
-    
-    // Add markers for each point except the current position
-    trail.forEach((point, index) => {
-      if (index === 0) return; // Skip the current position
-      
-      const el = document.createElement('div');
-      el.className = 'trail-point-marker';
-      
-      // Make more recent points larger and more opaque
-      const size = Math.max(3, 7 - (index * 0.15)); // Size decreases with age
-      const opacity = Math.max(0.3, 1 - (index * 0.03)); // Opacity decreases with age
-      
-      el.style.width = `${size}px`;
-      el.style.height = `${size}px`;
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = '#ff6b6b';
-      el.style.border = '1px solid white';
-      el.style.opacity = opacity;
-      el.style.boxShadow = '0 0 3px rgba(0, 0, 0, 0.3)';
-      el.style.transition = 'all 0.3s ease';
-      
-      const marker = new maplibregl.Marker({
-        element: el,
-        anchor: 'center',
-        offset: [0, 0],
-        draggable: false,
-        clickTolerance: 0,
-        rotation: 0
-      })
-      .setLngLat(point)
-      .addTo(this.map);
-      
-      this.trailPointMarkers.push(marker);
-    });
-  },
-  
-  // Update trail point markers
-  updateTrailPointMarkers(trail) {
-    this.addTrailPointMarkers(trail);
-  },
-  
-  // Remove trail point markers
-  removeTrailPointMarkers() {
-    if (this.trailPointMarkers) {
-      this.trailPointMarkers.forEach(marker => marker.remove());
-      this.trailPointMarkers = [];
-    }
-  },
-  
+
   // Update device position and trail
   updateDevice(device, trail) {
     try {
@@ -510,20 +544,21 @@ const DeviceMapHook = {
       
       // Clean up map
       if (this.map) {
+        // Remove highlight layers and source
+        ['trail-points-highlight-glow', 'trail-points-highlight'].forEach(layerId => {
+          if (this.map.getLayer(layerId)) {
+            this.map.removeLayer(layerId);
+          }
+        });
+        if (this.map.getSource('highlight-point')) {
+          this.map.removeSource('highlight-point');
+        }
         this.map.remove();
       }
       
-      // Clean up markers
+      // Clean up device marker
       if (this.deviceMarker) {
         this.deviceMarker.remove();
-      }
-
-      if (this.highlightMarker) {
-        this.highlightMarker.remove();
-      }
-      
-      if (this.trailPointMarkers) {
-        this.trailPointMarkers.forEach(marker => marker.remove());
       }
       
       console.log("DeviceMapHook destroyed, resources cleaned up");
@@ -536,17 +571,12 @@ const DeviceMapHook = {
 // Add styles to match main map
 document.head.insertAdjacentHTML('beforeend', `
   <style>
-      .highlighted-marker {
-    width: 25px !important;
-    height: 25px !important;
-    z-index: 100;
-    animation: pulse 1s infinite;
-    border-radius: 50%;
-  }
-    
-    .trail-point-marker {
-      transition: opacity 0.3s ease;
-      pointer-events: none;
+    .highlighted-marker {
+      width: 25px !important;
+      height: 25px !important;
+      z-index: 100;
+      animation: pulse 1s infinite;
+      border-radius: 50%;
     }
     
     .maplibregl-popup-content {
