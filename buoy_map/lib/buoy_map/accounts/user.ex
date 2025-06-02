@@ -2,8 +2,12 @@ defmodule BuoyMap.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias BuoyMap.Accounts.Organization
+  alias BuoyMap.Maritime.Vessel
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @roles [:owner, :admin, :crew]
 
   schema "users" do
     field :email, :string
@@ -11,6 +15,19 @@ defmodule BuoyMap.Accounts.User do
     field :hashed_password, :string, redact: true
     field :current_password, :string, virtual: true, redact: true
     field :confirmed_at, :utc_datetime
+
+    field :first_name, :string
+    field :last_name, :string
+    # company_name can be derived from the organization association
+    field :phone, :string
+    field :fisherman_status, :boolean, default: false
+    field :nickname, :string
+
+    field :role, Ecto.Enum, values: @roles
+
+    # Associations
+    belongs_to :organization, Organization
+    many_to_many :vessels, Vessel, join_through: "users_vessels", on_replace: :delete
 
     timestamps(type: :utc_datetime)
   end
@@ -40,9 +57,24 @@ defmodule BuoyMap.Accounts.User do
   """
   def registration_changeset(user, attrs, opts \\ []) do
     user
-    |> cast(attrs, [:email, :password])
+    |> cast(attrs, [
+      :email, :password,
+      :first_name, :last_name, :phone, :fisherman_status, :nickname, :role, :organization_id
+      # organization_id will likely be set by an admin or owner post-registration or during specific workflows
+    ])
     |> validate_email(opts)
     |> validate_password(opts)
+    |> validate_required([:first_name, :last_name, :email]) # Make new fields required
+    # Add validation for the :role field to ensure it's one of the allowed @roles
+    |> foreign_key_constraint(:organization_id)
+  end
+
+  def update_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:first_name, :last_name, :phone, :fisherman_status, :nickname, :role, :organization_id])
+    |> validate_required([:first_name, :last_name, :role])
+    |> validate_inclusion(:role, @roles)
+    |> foreign_key_constraint(:organization_id)
   end
 
   defp validate_email(changeset, opts) do

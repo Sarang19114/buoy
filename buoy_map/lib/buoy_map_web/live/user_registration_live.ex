@@ -9,23 +9,26 @@ defmodule BuoyMapWeb.UserRegistrationLive do
     <div class="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 py-8 px-4">
       <div class="mx-auto max-w-4xl">
         <div class="text-center mb-8">
-          <h1 class="text-3xl font-bold text-gray-900 mb-2">Join Buoy</h1>
+          <h1 class="text-3xl font-bold text-gray-900 mb-2">Join BuoyMap</h1>
           <p class="text-lg text-gray-600 leading-relaxed">
-            Create your account to start exploring
+            Create your account to start exploring.
+            If you provide a Company Name, you will be registered as its owner.
+            Otherwise, you'll be registered as a crew member.
           </p>
         </div>
 
         <div class="bg-white rounded-2xl shadow-xl p-6 sm:p-8 mb-6">
-            <p class="text-sm text-gray-600 mb-3 text-center">Already have an account?</p>
-            <.link
-              navigate={~p"/users/log_in"}
-              class="inline-flex items-center justify-center w-full py-3 px-6 border-2 border-green-600 text-green-600 font-semibold rounded-xl hover:bg-green-50 hover:text-green-700 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-green-300"
-            >
-              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
-              </svg>
-              Sign In Instead
-            </.link>
+          <p class="text-sm text-gray-600 mb-3 text-center">Already have an account?</p>
+          <.link
+            navigate={~p"/users/log_in"}
+            class="inline-flex items-center justify-center w-full py-3 px-6 border-2 border-green-600 text-green-600 font-semibold rounded-xl hover:bg-green-50 hover:text-green-700 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-green-300"
+          >
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+            </svg>
+            Sign In Instead
+          </.link>
+
           <.simple_form
             for={@form}
             id="registration_form"
@@ -34,16 +37,14 @@ defmodule BuoyMapWeb.UserRegistrationLive do
             phx-trigger-action={@trigger_submit}
             action={~p"/users/log_in?_action=registered"}
             method="post"
-            class="space-y-6"
+            class="space-y-6 mt-6"
           >
             <.error :if={@check_errors} class="bg-red-50 border-l-4 border-red-400 text-red-700 p-4 rounded-md mb-6" role="alert">
               <p class="font-bold">Oops, something went wrong!</p>
               <p>Please check the errors below and try again.</p>
             </.error>
 
-            <!-- Two-column layout for desktop, single column for mobile -->
             <div class="grid grid-cols-1 lg:grid-cols-2 lg:gap-8 space-y-6 lg:space-y-0">
-              <!-- Left Column -->
               <div class="space-y-6">
                 <div class="space-y-2">
                   <label for={@form[:first_name].id} class="block text-sm font-semibold text-gray-700 mb-2">
@@ -97,16 +98,14 @@ defmodule BuoyMapWeb.UserRegistrationLive do
                 </div>
               </div>
 
-              <!-- Right Column -->
               <div class="space-y-6">
                 <div class="space-y-2">
                   <label for={@form[:company_name].id} class="block text-sm font-semibold text-gray-700 mb-2">
-                    Company Name
+                    Company Name <span class="text-gray-500 font-normal">(Optional - creates new company)</span>
                   </label>
                   <.input
                     field={@form[:company_name]}
                     type="text"
-                    required
                     class="w-full px-4 py-4 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200 bg-gray-50 focus:bg-white"
                     placeholder="e.g., Oceanic Explorers Inc."
                   />
@@ -114,12 +113,11 @@ defmodule BuoyMapWeb.UserRegistrationLive do
 
                 <div class="space-y-2">
                   <label for={@form[:phone].id} class="block text-sm font-semibold text-gray-700 mb-2">
-                    Phone Number
+                    Phone Number <span class="text-gray-500 font-normal">(Optional)</span>
                   </label>
                   <.input
                     field={@form[:phone]}
                     type="tel"
-                    required
                     class="w-full px-4 py-4 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200 bg-gray-50 focus:bg-white"
                     placeholder="e.g., +1 555-123-4567"
                   />
@@ -147,8 +145,8 @@ defmodule BuoyMapWeb.UserRegistrationLive do
                       <div class="text-sm text-blue-800">
                         <p class="font-medium mb-1">Password requirements:</p>
                         <ul class="text-xs space-y-1 text-blue-700">
-                          <li>• At least 12 characters long (recommended)</li>
-                          <li>• Mix of letters, numbers & symbols</li>
+                          <li>• At least 12 characters long</li>
+                          <li>• Mix of letters, numbers & symbols recommended</li>
                         </ul>
                       </div>
                     </div>
@@ -183,7 +181,6 @@ defmodule BuoyMapWeb.UserRegistrationLive do
               </button>
             </:actions>
           </.simple_form>
-
         </div>
 
         <div class="mt-8 text-center">
@@ -212,51 +209,83 @@ defmodule BuoyMapWeb.UserRegistrationLive do
   end
 
   def mount(_params, _session, socket) do
-    # IMPORTANT: Ensure your User schema and Accounts.change_user_registration/1
-    # function are updated to include all these new fields:
-    # :first_name, :last_name, :nickname, :company_name, :phone, :fisherman_status
-    changeset = Accounts.change_user_registration(%User{})
+    # Create a user struct with the virtual company_name field
+    empty_user_with_virtual_fields = struct(%User{}, company_name: nil)
+    changeset = Accounts.change_user_registration(empty_user_with_virtual_fields)
 
     socket =
       socket
       |> assign(trigger_submit: false, check_errors: false)
       |> assign_form(changeset)
 
-    {:ok, socket, layout: false, temporary_assigns: [form: nil]}
+    {:ok, socket, temporary_assigns: [form: nil]}
   end
 
   def handle_event("save", %{"user" => user_params}, socket) do
-    # IMPORTANT: Ensure Accounts.register_user/1 can handle all new user_params
-    # and that your User schema + changeset correctly validate/cast them.
     case Accounts.register_user(user_params) do
       {:ok, user} ->
-        {:ok, _} =
-          Accounts.deliver_user_confirmation_instructions(
-            user,
-            &url(~p"/users/confirm/#{&1}")
-          )
+        case Accounts.deliver_user_confirmation_instructions(
+               user,
+               &url(~p"/users/confirm/#{&1}")
+             ) do
+          {:ok, _} ->
+            changeset = Accounts.change_user_registration(user)
+            {:noreply,
+             socket
+             |> put_flash(:info, "User created successfully. Please check your email for confirmation.")
+             |> assign(trigger_submit: true)
+             |> assign_form(changeset)}
 
-        changeset = Accounts.change_user_registration(user)
-        {:noreply, socket |> assign(trigger_submit: true) |> assign_form(changeset)}
+          {:error, :already_confirmed} ->
+            changeset = Accounts.change_user_registration(user)
+            {:noreply,
+             socket
+             |> put_flash(:info, "User created, account already confirmed.")
+             |> assign(trigger_submit: true)
+             |> assign_form(changeset)}
+
+          {:error, reason} ->
+            IO.inspect(reason, label: "Confirmation email delivery failed")
+            changeset = Accounts.change_user_registration(user)
+            {:noreply,
+             socket
+             |> put_flash(:info, "User created successfully, but we couldn't send a confirmation email. Please contact support.")
+             |> assign(trigger_submit: true)
+             |> assign_form(changeset)}
+        end
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, socket |> assign(check_errors: true) |> assign_form(changeset)}
+
+      # Handle transaction rollback if organization creation failed
+      {:error, :transaction, :failed_to_create_organization, _changes} ->
+        empty_user_with_virtual_fields = struct(%User{}, company_name: user_params["company_name"])
+        changeset = Accounts.change_user_registration(empty_user_with_virtual_fields, user_params)
+        error_changeset = Ecto.Changeset.add_error(changeset, :company_name, "could not be created or already exists with issues.")
+        {:noreply, socket |> assign(check_errors: true) |> assign_form(error_changeset)}
+
+      {:error, reason} ->
+        IO.inspect(reason, label: "User registration failed unexpectedly")
+        empty_user_with_virtual_fields = struct(%User{}, company_name: user_params["company_name"])
+        changeset = Accounts.change_user_registration(empty_user_with_virtual_fields, user_params)
+        error_changeset = Ecto.Changeset.add_error(changeset, :base, "An unexpected error occurred during registration.")
+        {:noreply, socket |> assign(check_errors: true) |> assign_form(error_changeset)}
     end
   end
 
   def handle_event("validate", %{"user" => user_params}, socket) do
-    # IMPORTANT: Ensure Accounts.change_user_registration/2 can handle all new user_params for validation
-    changeset = Accounts.change_user_registration(%User{}, user_params)
+    empty_user_with_virtual_fields = struct(%User{}, company_name: user_params["company_name"])
+    changeset = Accounts.change_user_registration(empty_user_with_virtual_fields, user_params)
     {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
   end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
-    form = to_form(changeset, as: "user")
+    form_data = to_form(changeset, as: "user")
 
     if changeset.valid? do
-      assign(socket, form: form, check_errors: false)
+      assign(socket, form: form_data, check_errors: false)
     else
-      assign(socket, form: form)
+      assign(socket, form: form_data)
     end
   end
 end

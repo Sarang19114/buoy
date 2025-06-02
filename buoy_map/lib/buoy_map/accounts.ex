@@ -6,7 +6,7 @@ defmodule BuoyMap.Accounts do
   import Ecto.Query, warn: false
   alias BuoyMap.Repo
 
-  alias BuoyMap.Accounts.{User, UserToken, UserNotifier}
+  alias BuoyMap.Accounts.{User, UserToken, UserNotifier, Organization}
 
   ## Database getters
 
@@ -75,9 +75,51 @@ defmodule BuoyMap.Accounts do
 
   """
   def register_user(attrs) do
-    %User{}
-    |> User.registration_changeset(attrs)
-    |> Repo.insert()
+  company_name = Map.get(attrs, "company_name") # Form params are string keys
+  user_attrs = Map.drop(attrs, ["company_name"])
+
+  result = Repo.transaction(fn ->
+    # Determine organization and role
+    {final_user_attrs, _organization} =
+      cond do
+        company_name && String.trim(company_name) != "" ->
+          # Find or create organization
+          organization =
+            Repo.get_by(Organization, name: company_name) ||
+              (case create_organization_in_transaction(%{name: company_name}) do
+                 {:ok, org} -> org
+                 {:error, _changeset} -> Repo.rollback("failed_to_create_organization")
+               end)
+
+          # User becomes owner of this organization
+          {Map.merge(user_attrs, %{
+             "organization_id" => organization.id,
+             "role" => :owner # Atom key for Ecto.Enum
+           }), organization}
+
+        true ->
+          # No company name, register as crew without an organization
+          {Map.merge(user_attrs, %{"role" => :crew}), nil} # Atom key for Ecto.Enum
+      end
+
+    case %User{}
+         |> User.registration_changeset(final_user_attrs) # final_user_attrs now has string keys
+         |> Repo.insert() do
+      {:ok, user} -> user
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end)
+
+  case result do
+    {:ok, user} -> {:ok, user}
+    {:error, changeset} -> {:error, changeset}
+  end
+end
+
+  defp create_organization_in_transaction(attrs) do
+    %Organization{}
+    |> Organization.changeset(attrs)
+    |> Repo.insert() # This will raise on error within a transaction or return {:ok, org}
   end
 
   @doc """
@@ -91,6 +133,93 @@ defmodule BuoyMap.Accounts do
   """
   def change_user_registration(%User{} = user, attrs \\ %{}) do
     User.registration_changeset(user, attrs, hash_password: false, validate_email: false)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for updating user profile data (excluding email/password).
+  """
+  def change_user_profile(%User{} = user, attrs \\ %{}) do
+    User.update_changeset(user, attrs)
+  end
+
+  @doc """
+  Updates a user's profile information and role.
+  """
+  def update_user_profile(%User{} = user, attrs) do
+    user
+    |> User.update_changeset(attrs)
+    # If changing organization_id, ensure the ID is valid or handle accordingly
+    |> Repo.update()
+  end
+
+  # === Organization Functions ===
+  @doc """
+  Lists all organizations.
+  """
+  def list_organizations do
+    Repo.all(Organization)
+  end
+
+  @doc """
+  Gets a single organization by ID.
+  """
+  def get_organization!(id), do: Repo.get!(Organization, id) |> Repo.preload([:users, :vessels])
+
+  @doc """
+  Creates an organization.
+  """
+  def create_organization(attrs \\ %{}) do
+    %Organization{}
+    |> Organization.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates an organization's attributes.
+  """
+  def update_organization(%Organization{} = organization, attrs) do
+    organization
+    |> Organization.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes an organization.
+  Consider consequences for associated users and vessels (e.g., on_delete behavior in schemas/migrations).
+  """
+  def delete_organization(%Organization{} = organization) do
+    Repo.delete(organization)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking organization changes.
+  """
+  def change_organization(%Organization{} = organization, attrs \\ %{}) do
+    Organization.changeset(organization, attrs)
+  end
+
+  # === User and Organization Linking ===
+  @doc """
+  Assigns a user to an organization and optionally sets their role.
+  The user must already exist.
+  """
+  def assign_user_to_organization(%User{} = user, %Organization{} = organization, role \\ nil) do
+    changes_to_apply = %{organization_id: organization.id}
+    changes_to_apply = if !is_nil(role), do: Map.put(changes_to_apply, :role, role), else: changes_to_apply
+
+    user
+    |> User.update_changeset(changes_to_apply) # Use the update_changeset for consistency
+    |> Repo.update()
+  end
+
+  @doc """
+  Lists all users belonging to a specific organization.
+  """
+  def list_users_for_organization(%Organization{} = organization) do
+    Repo.all(
+      from u in User,
+      where: u.organization_id == ^organization.id
+    )
   end
 
   ## Settings

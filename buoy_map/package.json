@@ -1,5 +1,7 @@
 {
   "dependencies": {
+    "chart.js": "^4.4.9",
+    "maplibre-gl": "^5.5.0",
     "pmtiles": "^4.3.0"
   }
 }
