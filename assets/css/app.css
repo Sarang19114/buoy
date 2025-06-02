@@ -1,0 +1,18 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Import MapLibre GL CSS */
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+/* This file is for your main application CSS */
+
+.marker {
+  cursor: pointer;
+}
+
+/* Fix for flex container to properly size map */
+.flex-1 {
+  flex: 1 1 0%;
+  min-height: 0;
+}
