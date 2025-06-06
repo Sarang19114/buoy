@@ -3,6 +3,15 @@ import Config
 # Only in tests, remove the complexity from the password hashing algorithm
 config :bcrypt_elixir, :log_rounds, 1
 
+config :buoy_map, BuoyMap.Repo,
+  adapter: Ecto.Adapters.Postgres,
+  username: "buoy_dev",
+  password: "postgres_buoy",
+  hostname: "localhost",
+  database: "buoy_map_test#{System.get_env("MIX_TEST_PARTITION")}",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: System.schedulers_online() * 2
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :buoy_map, BuoyMapWeb.Endpoint,

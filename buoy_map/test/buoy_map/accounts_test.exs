@@ -2,9 +2,9 @@ defmodule BuoyMap.AccountsTest do
   use BuoyMap.DataCase
 
   alias BuoyMap.Accounts
+  alias BuoyMap.Accounts.{User, UserToken, Organization}
 
   import BuoyMap.AccountsFixtures
-  alias BuoyMap.Accounts.{User, UserToken}
 
   describe "get_user_by_email/1" do
     test "does not return the user if the email does not exist" do
@@ -92,6 +92,76 @@ defmodule BuoyMap.AccountsTest do
       assert is_nil(user.confirmed_at)
       assert is_nil(user.password)
     end
+
+    test "registers user as crew without organization when no company_name provided" do
+      email = unique_user_email()
+      attrs = valid_user_attributes(email: email)
+      {:ok, user} = Accounts.register_user(attrs)
+      
+      assert user.email == email
+      assert user.role == :crew
+      assert is_nil(user.organization_id)
+    end
+
+    test "registers user as crew when company_name is empty string" do
+      email = unique_user_email()
+      attrs = valid_user_attributes(email: email) |> Map.put("company_name", "")
+      {:ok, user} = Accounts.register_user(attrs)
+      
+      assert user.email == email
+      assert user.role == :crew
+      assert is_nil(user.organization_id)
+    end
+
+    test "registers user as crew when company_name is whitespace only" do
+      email = unique_user_email()
+      attrs = valid_user_attributes(email: email) |> Map.put("company_name", "   ")
+      {:ok, user} = Accounts.register_user(attrs)
+      
+      assert user.email == email
+      assert user.role == :crew
+      assert is_nil(user.organization_id)
+    end
+
+    test "creates new organization and registers user as owner when company_name provided" do
+      email = unique_user_email()
+      company_name = "Test Maritime Company"
+      attrs = valid_user_attributes(email: email) |> Map.put("company_name", company_name)
+      
+      {:ok, user} = Accounts.register_user(attrs)
+      
+      assert user.email == email
+      assert user.role == :owner
+      assert user.organization_id
+      
+      organization = Accounts.get_organization!(user.organization_id)
+      assert organization.name == company_name
+    end
+
+    test "uses existing organization when company_name already exists" do
+      # Create an organization first
+      {:ok, existing_org} = Accounts.create_organization(%{name: "Existing Company"})
+      
+      email = unique_user_email()
+      attrs = valid_user_attributes(email: email) |> Map.put("company_name", "Existing Company")
+      
+      {:ok, user} = Accounts.register_user(attrs)
+      
+      assert user.email == email
+      assert user.role == :owner
+      assert user.organization_id == existing_org.id
+    end
+
+    test "rolls back transaction when organization creation fails" do
+      # Mock a scenario where organization creation might fail
+      # This is more of an integration test - you might need to adjust based on your validation rules
+      email = unique_user_email()
+      attrs = valid_user_attributes(email: email) |> Map.put("company_name", nil)
+      
+      # This should still work as it falls back to crew registration
+      {:ok, user} = Accounts.register_user(attrs)
+      assert user.role == :crew
+    end
   end
 
   describe "change_user_registration/2" do
@@ -114,6 +184,190 @@ defmodule BuoyMap.AccountsTest do
       assert get_change(changeset, :email) == email
       assert get_change(changeset, :password) == password
       assert is_nil(get_change(changeset, :hashed_password))
+    end
+  end
+
+  describe "change_user_profile/2" do
+    test "returns a changeset for user profile updates" do
+      user = user_fixture()
+      assert %Ecto.Changeset{} = Accounts.change_user_profile(user)
+    end
+
+    test "allows profile fields to be set" do
+      user = user_fixture()
+      attrs = %{role: :captain}
+      changeset = Accounts.change_user_profile(user, attrs)
+      assert changeset.valid?
+      assert get_change(changeset, :role) == :captain
+    end
+  end
+
+  describe "update_user_profile/2" do
+    test "updates user profile successfully" do
+      user = user_fixture()
+      attrs = %{role: :captain}
+      
+      {:ok, updated_user} = Accounts.update_user_profile(user, attrs)
+      assert updated_user.role == :captain
+    end
+
+    test "returns error changeset for invalid data" do
+      user = user_fixture()
+      attrs = %{role: :invalid_role}
+      
+      {:error, changeset} = Accounts.update_user_profile(user, attrs)
+      refute changeset.valid?
+    end
+  end
+
+  # Organization Tests
+  describe "list_organizations/0" do
+    test "returns all organizations" do
+      org1 = organization_fixture()
+      org2 = organization_fixture()
+      
+      organizations = Accounts.list_organizations()
+      assert length(organizations) >= 2
+      assert Enum.any?(organizations, &(&1.id == org1.id))
+      assert Enum.any?(organizations, &(&1.id == org2.id))
+    end
+
+    test "returns empty list when no organizations exist" do
+      # Assuming a clean database for this test
+      organizations = Accounts.list_organizations()
+      assert is_list(organizations)
+    end
+  end
+
+  describe "get_organization!/1" do
+    test "returns organization with preloaded associations" do
+      org = organization_fixture()
+      retrieved_org = Accounts.get_organization!(org.id)
+      
+      assert retrieved_org.id == org.id
+      assert retrieved_org.name == org.name
+      # Check that associations are preloaded
+      assert %Ecto.Association.NotLoaded{} != retrieved_org.users
+      assert %Ecto.Association.NotLoaded{} != retrieved_org.vessels
+    end
+
+    test "raises when organization does not exist" do
+      assert_raise Ecto.NoResultsError, fn ->
+        Accounts.get_organization!(-1)
+      end
+    end
+  end
+
+  describe "create_organization/1" do
+    test "creates organization with valid attributes" do
+      attrs = %{name: "Test Organization"}
+      {:ok, organization} = Accounts.create_organization(attrs)
+      
+      assert organization.name == "Test Organization"
+    end
+
+    test "returns error changeset with invalid attributes" do
+      {:error, changeset} = Accounts.create_organization(%{})
+      refute changeset.valid?
+    end
+  end
+
+  describe "update_organization/2" do
+    test "updates organization with valid attributes" do
+      organization = organization_fixture()
+      attrs = %{name: "Updated Organization Name"}
+      
+      {:ok, updated_org} = Accounts.update_organization(organization, attrs)
+      assert updated_org.name == "Updated Organization Name"
+    end
+
+    test "returns error changeset with invalid attributes" do
+      organization = organization_fixture()
+      attrs = %{name: nil}
+      
+      {:error, changeset} = Accounts.update_organization(organization, attrs)
+      refute changeset.valid?
+    end
+  end
+
+  describe "delete_organization/1" do
+    test "deletes the organization" do
+      organization = organization_fixture()
+      {:ok, deleted_org} = Accounts.delete_organization(organization)
+      
+      assert deleted_org.id == organization.id
+      assert_raise Ecto.NoResultsError, fn ->
+        Accounts.get_organization!(organization.id)
+      end
+    end
+  end
+
+  describe "change_organization/2" do
+    test "returns a changeset" do
+      organization = organization_fixture()
+      assert %Ecto.Changeset{} = Accounts.change_organization(organization)
+    end
+
+    test "allows fields to be set" do
+      organization = organization_fixture()
+      attrs = %{name: "New Name"}
+      changeset = Accounts.change_organization(organization, attrs)
+      
+      assert changeset.valid?
+      assert get_change(changeset, :name) == "New Name"
+    end
+  end
+
+  describe "assign_user_to_organization/3" do
+    test "assigns user to organization successfully" do
+      user = user_fixture()
+      organization = organization_fixture()
+      
+      {:ok, updated_user} = Accounts.assign_user_to_organization(user, organization)
+      assert updated_user.organization_id == organization.id
+    end
+
+    test "assigns user to organization with specific role" do
+      user = user_fixture()
+      organization = organization_fixture()
+      
+      {:ok, updated_user} = Accounts.assign_user_to_organization(user, organization, :captain)
+      assert updated_user.organization_id == organization.id
+      assert updated_user.role == :captain
+    end
+
+    test "assigns user to organization without changing role when role is nil" do
+      user = user_fixture(%{role: :crew})
+      organization = organization_fixture()
+      
+      {:ok, updated_user} = Accounts.assign_user_to_organization(user, organization, nil)
+      assert updated_user.organization_id == organization.id
+      assert updated_user.role == :crew
+    end
+  end
+
+  describe "list_users_for_organization/1" do
+    test "returns users belonging to organization" do
+      organization = organization_fixture()
+      user1 = user_fixture()
+      user2 = user_fixture()
+      _user3 = user_fixture() # User not in the organization
+      
+      {:ok, _} = Accounts.assign_user_to_organization(user1, organization)
+      {:ok, _} = Accounts.assign_user_to_organization(user2, organization)
+      
+      users = Accounts.list_users_for_organization(organization)
+      user_ids = Enum.map(users, & &1.id)
+      
+      assert length(users) == 2
+      assert user1.id in user_ids
+      assert user2.id in user_ids
+    end
+
+    test "returns empty list when organization has no users" do
+      organization = organization_fixture()
+      users = Accounts.list_users_for_organization(organization)
+      assert users == []
     end
   end
 

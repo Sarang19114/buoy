@@ -23,6 +23,15 @@ defmodule BuoyMap.AccountsFixtures do
     user
   end
 
+  def organization_fixture(attrs \\ %{}) do
+    {:ok, organization} =
+      attrs
+      |> Enum.into(%{name: "Test Organization #{System.unique_integer()}"})
+      |> BuoyMap.Accounts.create_organization()
+
+    organization
+  end
+
   def extract_user_token(fun) do
     {:ok, captured_email} = fun.(&"[TOKEN]#{&1}[TOKEN]")
     [_, token | _] = String.split(captured_email.text_body, "[TOKEN]")

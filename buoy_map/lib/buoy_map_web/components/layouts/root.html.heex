@@ -4,55 +4,171 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="BuoyMap" suffix=" · Phoenix Framework">
+    <.live_title default="BuoyMap" suffix=" Â· Phoenix Framework">
       {assigns[:page_title]}
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>
   </head>
-  <body class="bg-white">
-    <ul class="relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 justify-end">
-      <%= if @current_user do %>
-        <li class="text-[0.8125rem] leading-6 text-zinc-900">
-          {@current_user.email}
-        </li>
-        <li>
-          <.link
-            href={~p"/users/settings"}
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Settings
-          </.link>
-        </li>
-        <li>
-          <.link
-            href={~p"/users/log_out"}
-            method="delete"
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Log out
-          </.link>
-        </li>
-      <% else %>
-        <li>
-          <.link
-            href={~p"/users/register"}
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Register
-          </.link>
-        </li>
-        <li>
-          <.link
-            href={~p"/users/log_in"}
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Log in
-          </.link>
-        </li>
-      <% end %>
-    </ul>
-    {@inner_content}
+  <body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+          <div class="flex items-center">
+            <.link href={~p"/"} class="flex items-center space-x-2 text-xl font-bold text-blue-600 hover:text-blue-700 transition-colors">
+              <img src={~p"/images/logo.png"} alt="BuoyMap Logo" class="h-12 w-12" />
+              <span>BuoyMap</span>
+            </.link>
+          </div>
+
+          <!-- Desktop Navigation -->
+          <div class="hidden md:flex items-center space-x-8">
+            <%= if @current_user do %>
+              <!-- Navigation Links for Authenticated Users -->
+              <.link href={~p"/"} class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                Dashboard
+              </.link>
+              
+              <!-- User Dropdown Menu -->
+              <div class="relative group">
+                <button class="flex items-center space-x-2 text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                  <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span class="text-blue-600 font-semibold text-sm">
+                      {String.first(@current_user.email) |> String.upcase()}
+                    </span>
+                  </div>
+                  <span class="max-w-32 truncate">{@current_user.email}</span>
+                  <svg class="w-4 h-4 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </button>
+                
+                <!-- Dropdown Menu -->
+                <div class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform origin-top-right scale-95 group-hover:scale-100">
+                  <div class="py-1">
+                    <.link href={~p"/users/settings"} class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors">
+                      <div class="flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        <span>Settings</span>
+                      </div>
+                    </.link>
+                    <hr class="my-1 border-gray-200">
+                    <.link href={~p"/users/log_out"} method="delete" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors">
+                      <div class="flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                        <span>Log out</span>
+                      </div>
+                    </.link>
+                  </div>
+                </div>
+              </div>
+            <% else %>
+              <!-- Guest Navigation -->
+              <.link href={~p"/"} class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                Home
+              </.link>
+              <.link href={~p"/about"} class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                About
+              </.link>
+              <div class="flex items-center space-x-4">
+                <.link href={~p"/users/log_in"} class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                  Log in
+                </.link>
+                <.link href={~p"/users/register"} class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm">
+                  Get Started
+                </.link>
+              </div>
+            <% end %>
+          </div>
+
+          <!-- Mobile Menu Button -->
+          <div class="md:hidden">
+            <button 
+              type="button" 
+              class="text-gray-500 hover:text-gray-600 focus:outline-none focus:text-gray-600 transition-colors"
+              onclick="toggleMobileMenu()"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile Menu -->
+      <div id="mobile-menu" class="md:hidden hidden border-t border-gray-200 bg-white">
+        <div class="px-2 pt-2 pb-3 space-y-1">
+          <%= if @current_user do %>
+            <!-- User Info -->
+            <div class="px-3 py-2 border-b border-gray-200 mb-2">
+              <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span class="text-blue-600 font-semibold">
+                    {String.first(@current_user.email) |> String.upcase()}
+                  </span>
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-gray-900 truncate">{@current_user.email}</p>
+                  <p class="text-xs text-gray-500">Signed in</p>
+                </div>
+              </div>
+            </div>
+            
+            <.link href={~p"/"} class="block px-3 py-2 text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors">
+              Dashboard
+            </.link>
+            <.link href={~p"/map"} class="block px-3 py-2 text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors">
+              Map
+            </.link>
+            <.link href={~p"/users/settings"} class="block px-3 py-2 text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors">
+              Settings
+            </.link>
+            <.link href={~p"/users/log_out"} method="delete" class="block px-3 py-2 text-base font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors">
+              Log out
+            </.link>
+          <% else %>
+            <.link href={~p"/"} class="block px-3 py-2 text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors">
+              Home
+            </.link>
+            <.link href={~p"/about"} class="block px-3 py-2 text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors">
+              About
+            </.link>
+            <.link href={~p"/users/log_in"} class="block px-3 py-2 text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors">
+              Log in
+            </.link>
+            <.link href={~p"/users/register"} class="block px-3 py-2 text-base font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors mx-3">
+              Get Started
+            </.link>
+          <% end %>
+        </div>
+      </div>
+    </nav>
+
+    <main class="flex-1">
+      {@inner_content}
+    </main>
+
+    <script>
+      function toggleMobileMenu() {
+        const menu = document.getElementById('mobile-menu');
+        menu.classList.toggle('hidden');
+      }
+      
+      document.addEventListener('click', function(event) {
+        const menu = document.getElementById('mobile-menu');
+        const button = event.target.closest('button');
+        
+        if (!menu.contains(event.target) && !button?.onclick?.toString().includes('toggleMobileMenu')) {
+          menu.classList.add('hidden');
+        }
+      });
+    </script>
   </body>
 </html>

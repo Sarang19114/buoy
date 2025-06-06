@@ -158,7 +158,11 @@ defmodule BuoyMapWeb.DeviceDetailLive do
   end
 
   # Add new event handler for highlighting coordinates
-  def handle_event("highlight_coordinate", %{"coordinate" => coordinate, "index" => index}, socket) do
+  def handle_event(
+        "highlight_coordinate",
+        %{"coordinate" => coordinate, "index" => index},
+        socket
+      ) do
     socket =
       socket
       |> push_event("highlight_coordinate", %{
@@ -328,15 +332,15 @@ defmodule BuoyMapWeb.DeviceDetailLive do
       <!-- Header/Navigation -->
       <div class="bg-white shadow-md p-4 border-b border-gray-200 flex items-center justify-between">
         <div class="flex items-center space-x-4">
-          <button
-            phx-click="show_map_view"
-            class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 flex items-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
-            </svg>
-            Back to Map
-          </button>
+    <button
+    phx-click="show_map_view"
+    class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 flex items-center"
+    >
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 sm:mr-2" viewBox="0 0 20 20" fill="currentColor">
+    <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+    </svg>
+    <span class="hidden sm:inline">Back to Map</span>
+    </button>
           <h1 class="text-xl font-bold text-gray-800"><%= if @device, do: @device.name, else: "Loading..." %></h1>
         </div>
         <div class="text-sm text-gray-500">
@@ -567,4 +571,3 @@ defmodule BuoyMapWeb.DeviceDetailLive do
     """
   end
 end
-
